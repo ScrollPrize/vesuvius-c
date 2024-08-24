@@ -6,7 +6,7 @@
 #include <curl/curl.h>
 #include <blosc2.h>
 
-// Configuration for your specific Zarr array
+// Zarr config
 #define ZARR_URL "https://dl.ash2txt.org/other/dev/scrolls/1/volumes/54keV_7.91um.zarr/0/"
 #define CHUNK_SIZE_X 128
 #define CHUNK_SIZE_Y 128
@@ -96,5 +96,6 @@ int get_zarr_value(int x, int y, int z, unsigned char *value) {
 
     return 0;
 }
+
 
 #endif // ZARR_READER_H
