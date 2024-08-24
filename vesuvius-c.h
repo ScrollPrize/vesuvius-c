@@ -1,5 +1,5 @@
-#ifndef VESCUVIUS_H
-#define VESCUVIUS_H
+#ifndef VESUVIUS_H
+#define VESUVIUS_H
 
 #include <limits.h>
 #include <stddef.h>
@@ -55,13 +55,13 @@ int hash_key(int chunk_x, int chunk_y, int chunk_z);
 int fill_image_slice(int x_start, int x_end, int y_start, int y_end, int z, unsigned char *image);
 int write_bmp(const char *filename, unsigned char *image, int width, int height);
 
-void init_vescuvius();
+void init_vesuvius();
 
 // Global cache
 LRUCache *cache;
 
-// Initialize the vescuvius library
-void init_vescuvius() {
+// Initialize the vesuvius library
+void init_vesuvius() {
     cache = init_cache();
 }
 
@@ -394,4 +394,4 @@ int write_bmp(const char *filename, unsigned char *image, int width, int height)
     return 0;
 }
 
-#endif // VESCUVIUS_H
+#endif // VESUVIUS_H

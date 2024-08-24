@@ -3,8 +3,8 @@
 
 
 int main() {
-    // Initialize the vescuvius library
-    init_vescuvius();
+    // Initialize the library
+    init_vesuvius();
 
     // Read a single value from the volume
     unsigned char value;
