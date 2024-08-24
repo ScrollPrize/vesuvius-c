@@ -26,12 +26,44 @@ int main() {
 }
 ```
 
+Resulting image:
+
+<img src="img/sample_image.png" alt="Example scroll data" width="200"/>
+
 The library fetches scroll data from the Vesuvius Challenge [data server](https://dl.ash2txt.org) in the background. Only the necessary volume chunks are requested, and an in-memory LRU cache holds recent chunks to avoid repeat downloads.
 
 > ⚠️ `vesuvius-c` is in beta and the interface may change. Only Scroll 1 is currently supported. More data may be added in the future.
 
-usage
+## Usage
 
-building
+See [example.c](example.c) for example library usage.
 
-dependencies
+## Building
+
+### Dependencies:
+
+* libcurl
+* c-blosc2
+
+`libcurl` is used for fetching volume chunks and is likely already available on your system. `c-blosc2` is used to decompress the Zarr chunks read from the server and may require installation.
+
+### Build and run:
+
+Simply link the dependencies and build your program:
+
+```sh
+gcc -o example example.c -lcurl -lblosc2
+./example
+```
+
+It may be necessary to point to the `c-blosc2` installation, for example:
+
+```sh
+gcc -o example example.c -I/opt/homebrew/Cellar/c-blosc2/2.15.1/include -L/opt/homebrew/Cellar/c-blosc2/2.15.1/lib -lcurl -lblosc2
+./example
+```
+
+## Next features
+
+* Volumes in addition to Scroll 1
+* Reading scroll segments (`.obj` mesh files)
