@@ -42,21 +42,21 @@ See [example.c](example.c) for example library usage.
 
 ### Dependencies:
 
-* libcurl
-* c-blosc2
+* [libcurl](https://curl.se/libcurl/)
+* [c-blosc2](https://github.com/Blosc/c-blosc2)
 
 `libcurl` is used for fetching volume chunks and is likely already available on your system. `c-blosc2` is used to decompress the Zarr chunks read from the server and may require installation.
 
 ### Build and run:
 
-Simply link the dependencies and build your program:
+Link the dependencies and build your program:
 
 ```sh
 gcc -o example example.c -lcurl -lblosc2
 ./example
 ```
 
-It may be necessary to point to the `c-blosc2` installation, for example:
+It may be necessary to point to the `c-blosc2` installation. For example, on Apple Silicon after `brew install c-blosc2`:
 
 ```sh
 gcc -o example example.c -I/opt/homebrew/Cellar/c-blosc2/2.15.1/include -L/opt/homebrew/Cellar/c-blosc2/2.15.1/lib -lcurl -lblosc2
