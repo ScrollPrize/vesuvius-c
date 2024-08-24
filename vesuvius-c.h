@@ -52,7 +52,7 @@ void move_to_head(LRUCache *cache, LRUNode *node);
 void evict_from_cache(LRUCache *cache);
 int hash_key(int chunk_x, int chunk_y, int chunk_z);
 
-int fill_image_slice(int slice_z, unsigned char *image, int image_width, int image_height);
+int fill_image_slice(int x_start, int x_end, int y_start, int y_end, int z, unsigned char *image);
 int write_bmp(const char *filename, unsigned char *image, int width, int height);
 
 void init_vescuvius();
@@ -255,12 +255,21 @@ int get_zarr_value(int x, int y, int z, unsigned char *value) {
 }
 
 // Function to fill an image slice from the 3D Zarr data
-int fill_image_slice(int slice_z, unsigned char *image, int image_width, int image_height) {
+int fill_image_slice(int x_start, int x_end, int y_start, int y_end, int z, unsigned char *image) {
+    // Validate boundaries
+    if (x_start < 0 || x_end >= SHAPE_X || y_start < 0 || y_end >= SHAPE_Y || z < 0 || z >= SHAPE_Z) {
+        fprintf(stderr, "Invalid boundaries for the slice\n");
+        return -1;
+    }
+
+    int image_width = x_end - x_start + 1;
+    int image_height = y_end - y_start + 1;
+
     // Determine the range of chunks needed for the slice
-    int chunk_start_x = 0 / CHUNK_SIZE_X;
-    int chunk_end_x = (image_width - 1) / CHUNK_SIZE_X;
-    int chunk_start_y = 0 / CHUNK_SIZE_Y;
-    int chunk_end_y = (image_height - 1) / CHUNK_SIZE_Y;
+    int chunk_start_x = x_start / CHUNK_SIZE_X;
+    int chunk_end_x = x_end / CHUNK_SIZE_X;
+    int chunk_start_y = y_start / CHUNK_SIZE_Y;
+    int chunk_end_y = y_end / CHUNK_SIZE_Y;
 
     int local_start_x, local_end_x, local_start_y, local_end_y;
     unsigned char decompressed_data[CHUNK_SIZE_Z * CHUNK_SIZE_Y * CHUNK_SIZE_X];
@@ -270,8 +279,8 @@ int fill_image_slice(int slice_z, unsigned char *image, int image_width, int ima
         for (int chunk_x = chunk_start_x; chunk_x <= chunk_end_x; ++chunk_x) {
             // Fetch the chunk data
             MemoryChunk chunk = {0};
-            if (fetch_zarr_chunk(chunk_x, chunk_y, slice_z / CHUNK_SIZE_Z, &chunk) != 0) {
-                fprintf(stderr, "Failed to fetch Zarr chunk (%d, %d, %d)\n", chunk_x, chunk_y, slice_z / CHUNK_SIZE_Z);
+            if (fetch_zarr_chunk(chunk_x, chunk_y, z / CHUNK_SIZE_Z, &chunk) != 0) {
+                fprintf(stderr, "Failed to fetch Zarr chunk (%d, %d, %d)\n", chunk_x, chunk_y, z / CHUNK_SIZE_Z);
                 return -1;
             }
 
@@ -284,14 +293,14 @@ int fill_image_slice(int slice_z, unsigned char *image, int image_width, int ima
             }
 
             // Calculate local boundaries within the chunk
-            local_start_x = (chunk_x == chunk_start_x) ? 0 % CHUNK_SIZE_X : 0;
-            local_end_x = (chunk_x == chunk_end_x) ? (image_width - 1) % CHUNK_SIZE_X : CHUNK_SIZE_X - 1;
-            local_start_y = (chunk_y == chunk_start_y) ? 0 % CHUNK_SIZE_Y : 0;
-            local_end_y = (chunk_y == chunk_end_y) ? (image_height - 1) % CHUNK_SIZE_Y : CHUNK_SIZE_Y - 1;
+            local_start_x = (chunk_x == chunk_start_x) ? x_start % CHUNK_SIZE_X : 0;
+            local_end_x = (chunk_x == chunk_end_x) ? x_end % CHUNK_SIZE_X : CHUNK_SIZE_X - 1;
+            local_start_y = (chunk_y == chunk_start_y) ? y_start % CHUNK_SIZE_Y : 0;
+            local_end_y = (chunk_y == chunk_end_y) ? y_end % CHUNK_SIZE_Y : CHUNK_SIZE_Y - 1;
 
             // Copy the relevant data from the decompressed chunk to the image slice
             for (int y = local_start_y; y <= local_end_y; ++y) {
-                memcpy(&image[(chunk_y * CHUNK_SIZE_Y + y) * image_width + chunk_x * CHUNK_SIZE_X + local_start_x],
+                memcpy(&image[(chunk_y * CHUNK_SIZE_Y + y - y_start) * image_width + chunk_x * CHUNK_SIZE_X + local_start_x - x_start],
                        &decompressed_data[y * CHUNK_SIZE_X + local_start_x],
                        local_end_x - local_start_x + 1);
             }
