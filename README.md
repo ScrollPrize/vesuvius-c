@@ -1,6 +1,6 @@
 # vesuvius-c
 
-From [Vesuvius Challenge](https://scrollprize.org), a C library for accessing CT scans of ancient scrolls.
+From [Vesuvius Challenge](https://scrollprize.org), a single-header C library for accessing CT scans of ancient scrolls.
 
 `vesuvius-c` allows direct access to scroll data **without** managing download scripts or storing terabytes of CT scans locally:
 
@@ -35,5 +35,3 @@ usage
 building
 
 dependencies
-
-license
