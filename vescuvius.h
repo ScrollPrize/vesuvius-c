@@ -1,5 +1,5 @@
-#ifndef ZARR_READER_H
-#define ZARR_READER_H
+#ifndef VESCUVIUS_H
+#define VESCUVIUS_H
 
 #include <limits.h>
 #include <stddef.h>
@@ -42,13 +42,28 @@ typedef struct {
 
 // Function prototypes
 size_t write_data(void *ptr, size_t size, size_t nmemb, MemoryChunk *chunk);
-int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk, LRUCache *cache);
-int get_zarr_value(int x, int y, int z, unsigned char *value, LRUCache *cache);
+int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk);
+int get_zarr_value(int x, int y, int z, unsigned char *value);
+
+LRUCache *init_cache();
 LRUNode *get_cache(LRUCache *cache, int chunk_x, int chunk_y, int chunk_z);
 void put_cache(LRUCache *cache, int chunk_x, int chunk_y, int chunk_z, MemoryChunk chunk);
 void move_to_head(LRUCache *cache, LRUNode *node);
 void evict_from_cache(LRUCache *cache);
-int fill_image_slice(int slice_z, unsigned char *image, int image_width, int image_height, LRUCache *cache);
+int hash_key(int chunk_x, int chunk_y, int chunk_z);
+
+int fill_image_slice(int slice_z, unsigned char *image, int image_width, int image_height);
+int write_bmp(const char *filename, unsigned char *image, int width, int height);
+
+void init_vescuvius();
+
+// Global cache
+LRUCache *cache;
+
+// Initialize the vescuvius library
+void init_vescuvius() {
+    cache = init_cache();
+}
 
 // Function to write data to memory (used by curl)
 size_t write_data(void *ptr, size_t size, size_t nmemb, MemoryChunk *chunk) {
@@ -171,7 +186,7 @@ void evict_from_cache(LRUCache *cache) {
 }
 
 // Function to get chunk data from the Zarr store or cache
-int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk, LRUCache *cache) {
+int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk) {
     LRUNode *cached_node = get_cache(cache, chunk_x, chunk_y, chunk_z);
     if (cached_node) {
         *chunk = cached_node->chunk;
@@ -207,7 +222,7 @@ int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk, 
 }
 
 // Function to retrieve the value at a specific (x, y, z) index
-int get_zarr_value(int x, int y, int z, unsigned char *value, LRUCache *cache) {
+int get_zarr_value(int x, int y, int z, unsigned char *value) {
     // Calculate the corresponding chunk indices
     int chunk_x = x / CHUNK_SIZE_X;
     int chunk_y = y / CHUNK_SIZE_Y;
@@ -220,7 +235,7 @@ int get_zarr_value(int x, int y, int z, unsigned char *value, LRUCache *cache) {
 
     // Fetch the chunk data
     MemoryChunk chunk = {0};
-    if (fetch_zarr_chunk(chunk_x, chunk_y, chunk_z, &chunk, cache) != 0) {
+    if (fetch_zarr_chunk(chunk_x, chunk_y, chunk_z, &chunk) != 0) {
         fprintf(stderr, "Failed to fetch Zarr chunk\n");
         return -1;
     }
@@ -240,7 +255,7 @@ int get_zarr_value(int x, int y, int z, unsigned char *value, LRUCache *cache) {
 }
 
 // Function to fill an image slice from the 3D Zarr data
-int fill_image_slice(int slice_z, unsigned char *image, int image_width, int image_height, LRUCache *cache) {
+int fill_image_slice(int slice_z, unsigned char *image, int image_width, int image_height) {
     // Determine the range of chunks needed for the slice
     int chunk_start_x = 0 / CHUNK_SIZE_X;
     int chunk_end_x = (image_width - 1) / CHUNK_SIZE_X;
@@ -255,7 +270,7 @@ int fill_image_slice(int slice_z, unsigned char *image, int image_width, int ima
         for (int chunk_x = chunk_start_x; chunk_x <= chunk_end_x; ++chunk_x) {
             // Fetch the chunk data
             MemoryChunk chunk = {0};
-            if (fetch_zarr_chunk(chunk_x, chunk_y, slice_z / CHUNK_SIZE_Z, &chunk, cache) != 0) {
+            if (fetch_zarr_chunk(chunk_x, chunk_y, slice_z / CHUNK_SIZE_Z, &chunk) != 0) {
                 fprintf(stderr, "Failed to fetch Zarr chunk (%d, %d, %d)\n", chunk_x, chunk_y, slice_z / CHUNK_SIZE_Z);
                 return -1;
             }
@@ -370,4 +385,4 @@ int write_bmp(const char *filename, unsigned char *image, int width, int height)
     return 0;
 }
 
-#endif // ZARR_READER_H
+#endif // VESCUVIUS_H

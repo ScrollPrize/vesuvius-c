@@ -4,12 +4,12 @@
 
 int main() {
     // Initialize the vescuvius library
-    LRUCache *cache = init_cache();
+    init_vescuvius();
 
     // Read a single value from the volume
     unsigned char value;
     int x = 3693, y = 2881, z = 6604;
-    if (get_zarr_value(x, y, z, &value, cache) == 0) {
+    if (get_zarr_value(x, y, z, &value) == 0) {
         printf("Value at (%d, %d, %d): %u\n", x, y, z, value);
     }
 
@@ -19,7 +19,7 @@ int main() {
 
     // Fill the image slice at z=256
     int slice_z = 256;
-    if (fill_image_slice(slice_z, image, image_width, image_height, cache) == 0) {
+    if (fill_image_slice(slice_z, image, image_width, image_height) == 0) {
         printf("Successfully filled image slice at z=%d\n", slice_z);
 
         // Write the image slice to a BMP file
