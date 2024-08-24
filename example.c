@@ -6,14 +6,14 @@ int main() {
     // Initialize the library
     init_vesuvius();
 
-    // Read a single value from the volume
+    // Read a single value from the scroll volume
     unsigned char value;
     int x = 3693, y = 2881, z = 6777;
-    if (get_zarr_value(x, y, z, &value) == 0) {
+    if (get_intensity(x, y, z, &value) == 0) {
         printf("Value at (%d, %d, %d): %u\n", x, y, z, value);
     }
 
-    // Fill an image slice
+    // Fill an image with a slice of scroll data
     int image_width = 1024, image_height = 1024;
     unsigned char *image = (unsigned char *)malloc(image_width * image_height);
 

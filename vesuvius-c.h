@@ -43,7 +43,7 @@ typedef struct {
 // Function prototypes
 size_t write_data(void *ptr, size_t size, size_t nmemb, MemoryChunk *chunk);
 int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk);
-int get_zarr_value(int x, int y, int z, unsigned char *value);
+int get_intensity(int x, int y, int z, unsigned char *value);
 
 LRUCache *init_cache();
 LRUNode *get_cache(LRUCache *cache, int chunk_x, int chunk_y, int chunk_z);
@@ -222,7 +222,7 @@ int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk) 
 }
 
 // Function to retrieve the value at a specific (x, y, z) index
-int get_zarr_value(int x, int y, int z, unsigned char *value) {
+int get_intensity(int x, int y, int z, unsigned char *value) {
     // Calculate the corresponding chunk indices
     int chunk_x = x / CHUNK_SIZE_X;
     int chunk_y = y / CHUNK_SIZE_Y;
