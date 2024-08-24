@@ -26,8 +26,6 @@ int main() {
 }
 ```
 
-In addition to `get_intensity(...)` for single volume values, there is also `fill_image_slice(...)` to fetch entire volume slices at once.
-
 The library fetches scroll data from the Vesuvius Challenge [data server](https://dl.ash2txt.org) in the background. Only the necessary volume chunks are requested, and an in-memory LRU cache holds recent chunks to avoid repeat downloads.
 
 > ⚠️ `vesuvius-c` is in beta and the interface may change. Only Scroll 1 is currently supported. More data may be added in the future.
