@@ -41,6 +41,8 @@ The library fetches scroll data from the Vesuvius Challenge [data server](https:
 
 ## Usage
 
+Please accept the [data agreement](https://forms.gle/HV1J6dJbmCB2z5QL8) before use.
+
 See [example.c](example.c) for example library usage.
 
 ## Building
