@@ -19,6 +19,16 @@
 #define SHAPE_Z 14376
 #define CACHE_CAPACITY 100  // Define the LRU cache capacity
 
+// Struct to pass parameters for fetching a scroll volume
+typedef struct {
+    int x_start;
+    int x_width;
+    int y_start;
+    int y_height;
+    int z_start;
+    int z_depth;
+} RegionOfInterest;
+
 typedef struct {
     unsigned char *data;
     size_t size;
@@ -41,9 +51,7 @@ typedef struct {
 } LRUCache;
 
 // Function prototypes
-size_t write_data(void *ptr, size_t size, size_t nmemb, MemoryChunk *chunk);
-int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk);
-int get_intensity(int x, int y, int z, unsigned char *value);
+void init_vesuvius();
 
 LRUCache *init_cache();
 LRUNode *get_cache(LRUCache *cache, int chunk_x, int chunk_y, int chunk_z);
@@ -52,10 +60,14 @@ void move_to_head(LRUCache *cache, LRUNode *node);
 void evict_from_cache(LRUCache *cache);
 int hash_key(int chunk_x, int chunk_y, int chunk_z);
 
-int fill_image_slice(int x_start, int x_end, int y_start, int y_end, int z, unsigned char *image);
-int write_bmp(const char *filename, unsigned char *image, int width, int height);
+size_t write_data(void *ptr, size_t size, size_t nmemb, MemoryChunk *chunk);
+int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk);
 
-void init_vesuvius();
+int get_volume_voxel(int x, int y, int z, unsigned char *value);
+int get_volume_roi(RegionOfInterest region, unsigned char *volume);
+int get_volume_slice(RegionOfInterest region, unsigned char *slice);
+
+int write_bmp(const char *filename, unsigned char *image, int width, int height);
 
 // Global cache
 LRUCache *cache;
@@ -185,7 +197,7 @@ void evict_from_cache(LRUCache *cache) {
     free(node);
 }
 
-// Function to get chunk data from the Zarr store or cache
+// Function to fetch a Zarr chunk from the server
 int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk) {
     LRUNode *cached_node = get_cache(cache, chunk_x, chunk_y, chunk_z);
     if (cached_node) {
@@ -198,7 +210,7 @@ int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk) 
     char url[512];
 
     snprintf(url, sizeof(url), "%s%d/%d/%d", ZARR_URL, chunk_z, chunk_y, chunk_x);
-    chunk->data = (unsigned char *) malloc(1);  
+    chunk->data = (unsigned char *)malloc(1);
     chunk->size = 0;
 
     curl = curl_easy_init();
@@ -215,14 +227,29 @@ int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk) 
         }
         curl_easy_cleanup(curl);
 
-        // Put the fetched chunk into the cache
+        // Decompress the chunk using Blosc
+        unsigned char *decompressed_data = (unsigned char *)malloc(CHUNK_SIZE_Z * CHUNK_SIZE_Y * CHUNK_SIZE_X);
+        int decompressed_size = blosc2_decompress(chunk->data, chunk->size, decompressed_data, CHUNK_SIZE_Z * CHUNK_SIZE_Y * CHUNK_SIZE_X);
+        if (decompressed_size < 0) {
+            fprintf(stderr, "Blosc2 decompression failed: %d\n", decompressed_size);
+            free(chunk->data);
+            free(decompressed_data);
+            return -1;
+        }
+
+        // Free the compressed data and update the chunk with the decompressed data
+        free(chunk->data);
+        chunk->data = decompressed_data;
+        chunk->size = decompressed_size;
+
+        // Put the decompressed chunk into the cache
         put_cache(cache, chunk_x, chunk_y, chunk_z, *chunk);
     }
     return 0;
 }
 
 // Function to retrieve the value at a specific (x, y, z) index
-int get_intensity(int x, int y, int z, unsigned char *value) {
+int get_volume_voxel(int x, int y, int z, unsigned char *value) {
     // Calculate the corresponding chunk indices
     int chunk_x = x / CHUNK_SIZE_X;
     int chunk_y = y / CHUNK_SIZE_Y;
@@ -240,78 +267,99 @@ int get_intensity(int x, int y, int z, unsigned char *value) {
         return -1;
     }
 
-    // Decompress the chunk using Blosc
-    unsigned char decompressed_data[CHUNK_SIZE_Z * CHUNK_SIZE_Y * CHUNK_SIZE_X];
-    int decompressed_size = blosc2_decompress(chunk.data, chunk.size, decompressed_data, sizeof(decompressed_data));
-    if (decompressed_size < 0) {
-        fprintf(stderr, "Blosc2 decompression failed: %d\n", decompressed_size);
-        return -1;
-    }
-
-    // Retrieve the value from the decompressed chunk data
-    *value = decompressed_data[local_z * CHUNK_SIZE_X * CHUNK_SIZE_Y + local_y * CHUNK_SIZE_X + local_x];
+    // Retrieve the value from the chunk data
+    *value = chunk.data[local_z * CHUNK_SIZE_X * CHUNK_SIZE_Y + local_y * CHUNK_SIZE_X + local_x];
 
     return 0;
 }
 
-// Function to fill an image slice from the 3D Zarr data
-int fill_image_slice(int x_start, int x_end, int y_start, int y_end, int z, unsigned char *image) {
+// Function to fill a 3D volume from the Zarr data
+int get_volume_roi(RegionOfInterest region, unsigned char *volume) {
     // Validate boundaries
-    if (x_start < 0 || x_end >= SHAPE_X || y_start < 0 || y_end >= SHAPE_Y || z < 0 || z >= SHAPE_Z) {
-        fprintf(stderr, "Invalid boundaries for the slice\n");
+    if (region.x_start < 0 || region.x_start + region.x_width > SHAPE_X ||
+        region.y_start < 0 || region.y_start + region.y_height > SHAPE_Y ||
+        region.z_start < 0 || region.z_start + region.z_depth > SHAPE_Z) {
+        fprintf(stderr, "Invalid boundaries for the volume\n");
         return -1;
     }
 
-    int image_width = x_end - x_start + 1;
-    int image_height = y_end - y_start + 1;
+    // Determine the range of chunks needed for the volume
+    int chunk_start_x = region.x_start / CHUNK_SIZE_X;
+    int chunk_end_x = (region.x_start + region.x_width - 1) / CHUNK_SIZE_X;
+    int chunk_start_y = region.y_start / CHUNK_SIZE_Y;
+    int chunk_end_y = (region.y_start + region.y_height - 1) / CHUNK_SIZE_Y;
+    int chunk_start_z = region.z_start / CHUNK_SIZE_Z;
+    int chunk_end_z = (region.z_start + region.z_depth - 1) / CHUNK_SIZE_Z;
 
-    // Determine the range of chunks needed for the slice
-    int chunk_start_x = x_start / CHUNK_SIZE_X;
-    int chunk_end_x = x_end / CHUNK_SIZE_X;
-    int chunk_start_y = y_start / CHUNK_SIZE_Y;
-    int chunk_end_y = y_end / CHUNK_SIZE_Y;
+    // Loop over all chunks that cover the volume
+    for (int chunk_z = chunk_start_z; chunk_z <= chunk_end_z; ++chunk_z) {
+        for (int chunk_y = chunk_start_y; chunk_y <= chunk_end_y; ++chunk_y) {
+            for (int chunk_x = chunk_start_x; chunk_x <= chunk_end_x; ++chunk_x) {
+                // Fetch the chunk data
+                MemoryChunk chunk = {0};
+                if (fetch_zarr_chunk(chunk_x, chunk_y, chunk_z, &chunk) != 0) {
+                    fprintf(stderr, "Failed to fetch Zarr chunk (%d, %d, %d)\n", chunk_x, chunk_y, chunk_z);
+                    return -1;
+                }
 
-    int local_start_x, local_end_x, local_start_y, local_end_y;
-    unsigned char decompressed_data[CHUNK_SIZE_Z * CHUNK_SIZE_Y * CHUNK_SIZE_X];
+                // Calculate local boundaries within the chunk
+                int local_start_x = (chunk_x == chunk_start_x) ? region.x_start % CHUNK_SIZE_X : 0;
+                int local_end_x = (chunk_x == chunk_end_x) ? (region.x_start + region.x_width - 1) % CHUNK_SIZE_X : CHUNK_SIZE_X - 1;
+                int local_start_y = (chunk_y == chunk_start_y) ? region.y_start % CHUNK_SIZE_Y : 0;
+                int local_end_y = (chunk_y == chunk_end_y) ? (region.y_start + region.y_height - 1) % CHUNK_SIZE_Y : CHUNK_SIZE_Y - 1;
+                int local_start_z = (chunk_z == chunk_start_z) ? region.z_start % CHUNK_SIZE_Z : 0;
+                int local_end_z = (chunk_z == chunk_end_z) ? (region.z_start + region.z_depth - 1) % CHUNK_SIZE_Z : CHUNK_SIZE_Z - 1;
 
-    // Loop over all chunks that cover the slice
-    for (int chunk_y = chunk_start_y; chunk_y <= chunk_end_y; ++chunk_y) {
-        for (int chunk_x = chunk_start_x; chunk_x <= chunk_end_x; ++chunk_x) {
-            // Fetch the chunk data
-            MemoryChunk chunk = {0};
-            if (fetch_zarr_chunk(chunk_x, chunk_y, z / CHUNK_SIZE_Z, &chunk) != 0) {
-                fprintf(stderr, "Failed to fetch Zarr chunk (%d, %d, %d)\n", chunk_x, chunk_y, z / CHUNK_SIZE_Z);
-                return -1;
+                // Copy the relevant data from the chunk to the volume
+                for (int z = local_start_z; z <= local_end_z; ++z) {
+                    for (int y = local_start_y; y <= local_end_y; ++y) {
+                        memcpy(&volume[((chunk_z * CHUNK_SIZE_Z + z - region.z_start) * region.y_height +
+                                        (chunk_y * CHUNK_SIZE_Y + y - region.y_start)) * region.x_width +
+                                       (chunk_x * CHUNK_SIZE_X + local_start_x - region.x_start)],
+                               &chunk.data[z * CHUNK_SIZE_X * CHUNK_SIZE_Y + y * CHUNK_SIZE_X + local_start_x],
+                               local_end_x - local_start_x + 1);
+                    }
+                }
             }
-
-            // Decompress the chunk using Blosc
-            int decompressed_size = blosc2_decompress(chunk.data, chunk.size, decompressed_data, sizeof(decompressed_data));
-            if (decompressed_size < 0) {
-                fprintf(stderr, "Blosc2 decompression failed: %d\n", decompressed_size);
-                free(chunk.data);
-                return -1;
-            }
-
-            // Calculate local boundaries within the chunk
-            local_start_x = (chunk_x == chunk_start_x) ? x_start % CHUNK_SIZE_X : 0;
-            local_end_x = (chunk_x == chunk_end_x) ? x_end % CHUNK_SIZE_X : CHUNK_SIZE_X - 1;
-            local_start_y = (chunk_y == chunk_start_y) ? y_start % CHUNK_SIZE_Y : 0;
-            local_end_y = (chunk_y == chunk_end_y) ? y_end % CHUNK_SIZE_Y : CHUNK_SIZE_Y - 1;
-
-            // Copy the relevant data from the decompressed chunk to the image slice
-            for (int y = local_start_y; y <= local_end_y; ++y) {
-                memcpy(&image[(chunk_y * CHUNK_SIZE_Y + y - y_start) * image_width + chunk_x * CHUNK_SIZE_X + local_start_x - x_start],
-                       &decompressed_data[y * CHUNK_SIZE_X + local_start_x],
-                       local_end_x - local_start_x + 1);
-            }
-
-            // Clean up
-            free(chunk.data);
         }
     }
 
     return 0;
 }
+
+int get_volume_slice(RegionOfInterest region, unsigned char *slice) {
+    // Validate boundaries
+    if (region.x_start < 0 || region.x_start + region.x_width > SHAPE_X ||
+        region.y_start < 0 || region.y_start + region.y_height > SHAPE_Y ||
+        region.z_start < 0 || region.z_start + region.z_depth > SHAPE_Z) {
+        fprintf(stderr, "Invalid boundaries for the volume\n");
+        return -1;
+    }
+
+    // Validate depth 1
+    if (region.z_depth != 1) {
+        fprintf(stderr, "Slice must have z_depth of 1\n");
+        return -1;
+    }
+
+    // Fetch the volume data for the slice
+    unsigned char *volume = (unsigned char *)malloc(region.x_width * region.y_height);
+    if (get_volume_roi(region, volume) != 0) {
+        fprintf(stderr, "Failed to fetch volume data for slice\n");
+        return -1;
+    }
+
+    // Copy the slice data from the volume
+    for (int y = 0; y < region.y_height; y++) {
+        for (int x = 0; x < region.x_width; x++) {
+            slice[y * region.x_width + x] = volume[y * region.x_width + x];
+        }
+    }
+
+    free(volume);
+    return 0;
+}
+
 
 // BMP Header Structures
 #pragma pack(push, 1) // Ensure no padding
