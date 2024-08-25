@@ -12,6 +12,7 @@ int main() {
     if (get_volume_voxel(x, y, z, &value) == 0) {
         printf("Voxel value at (%d, %d, %d): %u\n", x, y, z, value);
     }
+    // value <- 83
 
     // Define a region of interest in the scroll volume
     RegionOfInterest roi = {
@@ -32,7 +33,7 @@ int main() {
     }
     free(volume2);
 
-    // Save the three orthogonal slice planes from the region of interest
+    // Write the three orthogonal slice planes from the region of interest
     unsigned char *xy_slice = (unsigned char *)malloc(roi.x_width * roi.y_height);
     int middle_z = roi.z_depth / 2;
     for (int y = 0; y < roi.y_height; y++) {

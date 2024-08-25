@@ -360,7 +360,6 @@ int get_volume_slice(RegionOfInterest region, unsigned char *slice) {
     return 0;
 }
 
-
 // BMP Header Structures
 #pragma pack(push, 1) // Ensure no padding
 typedef struct {
@@ -398,10 +397,14 @@ int write_bmp(const char *filename, unsigned char *image, int width, int height)
     BMPFileHeader file_header;
     BMPInfoHeader info_header;
 
+    // Calculate the size of each row including padding
+    int rowSize = (width + 3) & ~3; // Round up to the nearest multiple of 4
+    int imageSize = rowSize * height;
+
     // BMP file header
     file_header.bfType = 0x4D42; // 'BM'
-    file_header.bfOffBits = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
-    file_header.bfSize = file_header.bfOffBits + width * height;
+    file_header.bfOffBits = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader) + 256 * 4; // File header + Info header + Palette
+    file_header.bfSize = file_header.bfOffBits + imageSize;
     file_header.bfReserved1 = 0;
     file_header.bfReserved2 = 0;
 
@@ -412,7 +415,7 @@ int write_bmp(const char *filename, unsigned char *image, int width, int height)
     info_header.biPlanes = 1;
     info_header.biBitCount = 8; // 8 bits per pixel (grayscale)
     info_header.biCompression = 0;
-    info_header.biSizeImage = width * height;
+    info_header.biSizeImage = imageSize;
     info_header.biXPelsPerMeter = 2835; // 72 DPI
     info_header.biYPelsPerMeter = 2835; // 72 DPI
     info_header.biClrUsed = 256;
@@ -430,14 +433,24 @@ int write_bmp(const char *filename, unsigned char *image, int width, int height)
         fwrite(color, sizeof(unsigned char), 4, file);
     }
 
-    // Write the pixel data (image)
-    size_t written = fwrite(image, sizeof(unsigned char), width * height, file);
-    if (written != width * height) {
-        fprintf(stderr, "Failed to write image data to file\n");
+    // Write the pixel data with padding
+    unsigned char *row = (unsigned char *)malloc(rowSize);
+    if (!row) {
+        fprintf(stderr, "Memory allocation failed\n");
         fclose(file);
         return -1;
     }
 
+    for (int y = 0; y < height; ++y) {
+        // Copy the image row and pad it
+        memcpy(row, image + (height - 1 - y) * width, width);
+        memset(row + width, 0, rowSize - width); // Pad the row
+
+        // Write the padded row
+        fwrite(row, sizeof(unsigned char), rowSize, file);
+    }
+
+    free(row);
     fclose(file);
     return 0;
 }

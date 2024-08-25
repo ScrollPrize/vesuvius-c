@@ -10,12 +10,6 @@ From [Vesuvius Challenge](https://scrollprize.org), a single-header C library fo
 int main() {
     init_vesuvius();
 
-    // Read an 8-bit value from the 3D scroll volume
-    int x = 3693, y = 2881, z = 6777;
-    unsigned char value;
-    get_volume_voxel(x, y, z, &value);
-    // value <- 83
-
     // Define a region of interest in the scroll volume
     RegionOfInterest roi = {
         .x_start = 3456, .y_start = 3256, .z_start = 6521,
@@ -25,12 +19,12 @@ int main() {
     // Fetch this region into a local 3D volume
     unsigned char *volume = (unsigned char *)malloc(roi.x_width * roi.y_height * roi.z_depth);
     get_volume_roi(roi, volume);
-    // volume <- scroll data!
 
     // Fetch a slice (ROI with depth = 1) from the volume
-    // ...
+    roi.z_start = roi.z_start + roi.z_depth / 2;
+    roi.z_depth = 1;
+    unsigned char *slice = (unsigned char *)malloc(roi.x_width * roi.y_height);
     get_volume_slice(roi, slice);
-    // slice <- scroll data!
 
     // Write slice image to file
     write_bmp("slice.bmp", slice, roi.x_width, roi.y_height);
