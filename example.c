@@ -13,19 +13,19 @@ int main() {
         printf("Voxel value at (%d, %d, %d): %u\n", x, y, z, value);
     }
 
-    // Define a region of interest in the volume
+    // Define a region of interest in the scroll volume
     RegionOfInterest roi = {
         .x_start = 3456, .y_start = 3256, .z_start = 6521,
         .x_width = 256, .y_height = 256, .z_depth = 256,
     };
 
-    // Fetch this region of interest into a 3D volume
+    // Fetch this region of interest into a local 3D volume
     unsigned char *volume = (unsigned char *)malloc(roi.x_width * roi.y_height * roi.z_depth);
     if (get_volume_roi(roi, volume) == 0) {
         printf("Filled volume ROI: %d+%d, %d+%d, %d+%d\n", roi.x_start, roi.x_width, roi.y_start, roi.y_height, roi.z_start, roi.z_depth);
     }
 
-    // Fetch the same region again (will come from the cache this time))
+    // Fetch the same region again (will come from the cache this time)
     unsigned char *volume2 = (unsigned char *)malloc(roi.x_width * roi.y_height * roi.z_depth);
     if (get_volume_roi(roi, volume2) == 0) {
         printf("Filled volume ROI from cache: %d+%d, %d+%d, %d+%d\n", roi.x_start, roi.x_width, roi.y_start, roi.y_height, roi.z_start, roi.z_depth);
@@ -64,6 +64,7 @@ int main() {
     free(yz_slice);
 
     // Fetch a slice plane from the volume (region of interest with a depth of 1)
+    // This is identical to the xy_slice taken from the above region of interest
     unsigned char *slice = (unsigned char *)malloc(roi.x_width * roi.y_height);
     roi.z_start = roi.z_start + middle_z;
     roi.z_depth = 1;

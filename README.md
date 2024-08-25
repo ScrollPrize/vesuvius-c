@@ -13,16 +13,27 @@ int main() {
     // Read an 8-bit value from the 3D scroll volume
     int x = 3693, y = 2881, z = 6777;
     unsigned char value;
-    get_intensity(x, y, z, &value);
+    get_volume_voxel(x, y, z, &value);
     // value <- 83
 
-    // Fill an image with a slice of the scroll volume
-    // ... init some values ...
-    fill_image_slice(x_start, x_end, y_start, y_end, slice_z, image);
-    // image <- scroll data!
+    // Define a region of interest in the scroll volume
+    RegionOfInterest roi = {
+        .x_start = 3456, .y_start = 3256, .z_start = 6521,
+        .x_width = 256, .y_height = 256, .z_depth = 256,
+    };
 
-    // Write image to disk
-    write_bmp("sample_image.bmp", image, image_width, image_height);
+    // Fetch this region into a local 3D volume
+    unsigned char *volume = (unsigned char *)malloc(roi.x_width * roi.y_height * roi.z_depth);
+    get_volume_roi(roi, volume);
+    // volume <- scroll data!
+
+    // Fetch a slice (ROI with depth = 1) from the volume
+    // ...
+    get_volume_slice(roi, slice);
+    // slice <- scroll data!
+
+    // Write slice image to file
+    write_bmp("slice.bmp", slice, roi.x_width, roi.y_height);
 }
 ```
 
