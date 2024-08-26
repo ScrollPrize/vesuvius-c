@@ -37,6 +37,8 @@ Resulting image:
 
 The library fetches scroll data from the Vesuvius Challenge [data server](https://dl.ash2txt.org) in the background. Only the necessary volume chunks are requested, and an in-memory LRU cache holds recent chunks to avoid repeat downloads.
 
+For a similar library in Python, see [vesuvius](https://github.com/ScrollPrize/vesuvius).
+
 > ⚠️ `vesuvius-c` is in beta and the interface may change. Only Scroll 1 is currently supported. More data may be added in the future.
 
 ## Usage
