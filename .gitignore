@@ -3,3 +3,4 @@ example
 *.bmp
 *.dSYM/
 .DS_Store
+.vesuvius-cache/

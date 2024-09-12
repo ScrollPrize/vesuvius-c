@@ -8,6 +8,9 @@
 #include <string.h>
 #include <curl/curl.h>
 #include <blosc2.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <errno.h>
 
 // Zarr config
 #define ZARR_URL "https://dl.ash2txt.org/other/dev/scrolls/1/volumes/54keV_7.91um.zarr/0/"
@@ -18,8 +21,9 @@
 #define SHAPE_Y 7888
 #define SHAPE_Z 14376
 #define CACHE_CAPACITY 100  // Define the LRU cache capacity
+#define CACHE_DIR ".vesuvius-cache"
 
-// Struct to pass parameters for fetching a scroll volume
+// Struct for scroll volume regions
 typedef struct {
     int x_start;
     int x_width;
@@ -61,6 +65,7 @@ void evict_from_cache(LRUCache *cache);
 int hash_key(int chunk_x, int chunk_y, int chunk_z);
 
 size_t write_data(void *ptr, size_t size, size_t nmemb, MemoryChunk *chunk);
+
 int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk);
 
 int get_volume_voxel(int x, int y, int z, unsigned char *value);
@@ -68,6 +73,10 @@ int get_volume_roi(RegionOfInterest region, unsigned char *volume);
 int get_volume_slice(RegionOfInterest region, unsigned char *slice);
 
 int write_bmp(const char *filename, unsigned char *image, int width, int height);
+int create_directories(const char *path);
+int write_chunk_to_disk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk);
+int read_chunk_from_disk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk);
+char *get_cache_path(int chunk_x, int chunk_y, int chunk_z);
 
 // Global cache
 LRUCache *cache;
@@ -109,6 +118,98 @@ LRUCache *init_cache() {
 int hash_key(int chunk_x, int chunk_y, int chunk_z) {
     // Ensure the hash key is non-negative and within the bounds of CACHE_CAPACITY
     return abs((chunk_x * 73856093) ^ (chunk_y * 19349663) ^ (chunk_z * 83492791)) % CACHE_CAPACITY;
+}
+
+// Get path for disk cache based on chunk coordinates
+char *get_cache_path(int chunk_x, int chunk_y, int chunk_z) {
+    char *path = (char *)malloc(512 * sizeof(char));
+    snprintf(path, 512, "%s/other/dev/scrolls/1/volumes/54keV_7.91um.zarr/0/%d/%d/%d", CACHE_DIR, chunk_z, chunk_y, chunk_x);
+    return path;
+}
+
+// Helper function to create directories recursively
+int create_directories(const char *path) {
+    char temp_path[512];
+    snprintf(temp_path, sizeof(temp_path), "%s", path);
+
+    for (char *p = temp_path + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';  // Temporarily terminate the string
+            if (mkdir(temp_path, 0755) != 0 && errno != EEXIST) {
+                return -1;  // Failed to create directory
+            }
+            *p = '/';  // Restore the original slash
+        }
+    }
+
+    // Create the last directory in the path
+    if (mkdir(temp_path, 0755) != 0 && errno != EEXIST) {
+        return -1;  // Failed to create final directory
+    }
+
+    return 0;  // Success
+}
+
+int write_chunk_to_disk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk) {
+    char *path = get_cache_path(chunk_x, chunk_y, chunk_z);
+
+    // Ensure the directory structure is created recursively
+    char *dir = strdup(path);
+    char *last_slash = strrchr(dir, '/');
+    if (last_slash) {
+        *last_slash = '\0';  // Remove the file name, keeping only the directory path
+        if (create_directories(dir) != 0) {
+            fprintf(stderr, "Failed to create directory: %s\n", dir);
+            free(dir);
+            free(path);
+            return -1;
+        }
+    }
+    free(dir);
+
+    // Write chunk data to disk
+    FILE *file = fopen(path, "wb");
+    if (!file) {
+        fprintf(stderr, "Failed to open file: %s\n", path);
+        free(path);
+        return -1;
+    }
+
+    fwrite(chunk->data, sizeof(unsigned char), chunk->size, file);
+    fclose(file);
+    free(path);
+
+    return 0;
+}
+
+
+// Read a chunk from disk cache
+int read_chunk_from_disk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk) {
+    char *path = get_cache_path(chunk_x, chunk_y, chunk_z);
+
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        free(path);
+        return -1; // File does not exist
+    }
+
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    chunk->data = (unsigned char *)malloc(file_size);
+    if (chunk->data == NULL) {
+        fclose(file);
+        free(path);
+        return -1;
+    }
+
+    fread(chunk->data, sizeof(unsigned char), file_size, file);
+    chunk->size = file_size;
+
+    fclose(file);
+    free(path);
+    return 0;
 }
 
 // Get chunk from the cache
@@ -197,7 +298,7 @@ void evict_from_cache(LRUCache *cache) {
     free(node);
 }
 
-// Function to fetch a Zarr chunk from the server
+// Get chunk from the cache, disk, or fetch it
 int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk) {
     LRUNode *cached_node = get_cache(cache, chunk_x, chunk_y, chunk_z);
     if (cached_node) {
@@ -205,6 +306,13 @@ int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk) 
         return 0;
     }
 
+    // Try reading from disk cache
+    if (read_chunk_from_disk(chunk_x, chunk_y, chunk_z, chunk) == 0) {
+        put_cache(cache, chunk_x, chunk_y, chunk_z, *chunk);  // Store in memory cache
+        return 0;
+    }
+
+    // Fetch the chunk from the server
     CURL *curl;
     CURLcode res;
     char url[512];
@@ -242,8 +350,9 @@ int fetch_zarr_chunk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk) 
         chunk->data = decompressed_data;
         chunk->size = decompressed_size;
 
-        // Put the decompressed chunk into the cache
+        // Store in memory and disk cache
         put_cache(cache, chunk_x, chunk_y, chunk_z, *chunk);
+        write_chunk_to_disk(chunk_x, chunk_y, chunk_z, chunk);
     }
     return 0;
 }
