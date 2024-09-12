@@ -77,6 +77,10 @@ int main() {
 
     free(volume);
 
+    //////////////////////////////////////////////////////////////////////////////////
+    // The below are examples of in-progress functionality that is not yet complete //
+    //////////////////////////////////////////////////////////////////////////////////
+
     // Fetch an .obj
     TriangleMesh mesh;
     const char *segment_id = "20231016151002";
@@ -94,6 +98,19 @@ int main() {
     // Calculate the bounding box of the triangle mesh
     RegionOfInterest mesh_bbox = get_mesh_bounding_box(&mesh);
     printf("Bounding box of the triangle mesh: %d+%d, %d+%d, %d+%d\n", mesh_bbox.x_start, mesh_bbox.x_width, mesh_bbox.y_start, mesh_bbox.y_height, mesh_bbox.z_start, mesh_bbox.z_depth);
+
+    // Get a 256x256x256 volume centered around 2900, 4970, 12900
+    RegionOfInterest mesh_roi = {
+        .x_start = 2900 - 128, .y_start = 4970 - 128, .z_start = 12900 - 128,
+        .x_width = 256, .y_height = 256, .z_depth = 256,
+    };
+    unsigned char *mesh_volume = (unsigned char *)malloc(mesh_roi.x_width * mesh_roi.y_height * mesh_roi.z_depth);
+    if (get_volume_roi(mesh_roi, mesh_volume) == 0) {
+        printf("Filled volume ROI around triangle mesh: %d+%d, %d+%d, %d+%d\n", mesh_roi.x_start, mesh_roi.x_width, mesh_roi.y_start, mesh_roi.y_height, mesh_roi.z_start, mesh_roi.z_depth);
+    }
+
+    // Reset mesh origin to the ROI
+    reset_mesh_origin_to_roi(&mesh, &mesh_roi);
 
     return 0;
 }

@@ -102,6 +102,7 @@ int parse_obj_file(const char *file_path, TriangleMesh *mesh);
 int get_triangle_mesh(const char *id, TriangleMesh *mesh);
 int write_trianglemesh_to_obj(const char *filename, const TriangleMesh *mesh);
 RegionOfInterest get_mesh_bounding_box(const TriangleMesh *mesh);
+void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi);
 
 // Global cache
 LRUCache *cache;
@@ -808,6 +809,15 @@ RegionOfInterest get_mesh_bounding_box(const TriangleMesh *mesh) {
     roi.z_depth = max_z - min_z;
 
     return roi;
+}
+
+void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
+    // Subtract the ROI origin from each vertex in the mesh
+    for (size_t i = 0; i < mesh->vertex_count; ++i) {
+        mesh->vertices[i].x -= roi->x_start;
+        mesh->vertices[i].y -= roi->y_start;
+        mesh->vertices[i].z -= roi->z_start;
+    }
 }
 
 #endif // VESUVIUS_H
