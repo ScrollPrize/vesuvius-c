@@ -4,3 +4,4 @@ example
 *.dSYM/
 .DS_Store
 .vesuvius-cache/
+*.obj

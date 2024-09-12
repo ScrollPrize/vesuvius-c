@@ -79,13 +79,16 @@ int main() {
 
     // Fetch an .obj
     TriangleMesh mesh;
-    if (get_triangle_mesh("20231005123336", &mesh) == 0) {
+    const char *segment_id = "20231016151002";
+    if (get_triangle_mesh(segment_id, &mesh) == 0) {
         printf("Fetched triangle mesh with %zu vertices and %zu triangles\n", mesh.vertex_count, mesh.triangle_count);
     }
 
     // Write the triangle mesh to an .obj file
-    if (write_trianglemesh_to_obj("mesh.obj", &mesh) == 0) {
-        printf("Wrote triangle mesh to mesh.obj\n");
+    char filename[256];
+    snprintf(filename, sizeof(filename), "%s.obj", segment_id);
+    if (write_trianglemesh_to_obj(filename, &mesh) == 0) {
+        printf("Wrote triangle mesh to: %s\n", filename);
     }
 
     // Calculate the bounding box of the triangle mesh
