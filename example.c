@@ -77,5 +77,16 @@ int main() {
 
     free(volume);
 
+    // Fetch an .obj
+    TriangleMesh mesh;
+    if (get_triangle_mesh("20231005123336", &mesh) == 0) {
+        printf("Fetched triangle mesh with %zu vertices and %zu triangles\n", mesh.vertex_count, mesh.triangle_count);
+    }
+
+    // Write the triangle mesh to an .obj file
+    if (write_trianglemesh_to_obj("mesh.obj", &mesh) == 0) {
+        printf("Wrote triangle mesh to mesh.obj\n");
+    }
+
     return 0;
 }

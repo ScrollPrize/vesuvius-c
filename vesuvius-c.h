@@ -1,6 +1,7 @@
 #ifndef VESUVIUS_H
 #define VESUVIUS_H
 
+#include <ctype.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -54,6 +55,21 @@ typedef struct {
     int count;
 } LRUCache;
 
+typedef struct {
+    float x, y, z;
+} Vertex;
+
+typedef struct {
+    int v1, v2, v3;  // Indices of the triangle's vertices
+} Triangle;
+
+typedef struct {
+    Vertex *vertices;
+    Triangle *triangles;
+    size_t vertex_count;
+    size_t triangle_count;
+} TriangleMesh;
+
 // Function prototypes
 void init_vesuvius();
 
@@ -77,6 +93,13 @@ int create_directories(const char *path);
 int write_chunk_to_disk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk);
 int read_chunk_from_disk(int chunk_x, int chunk_y, int chunk_z, MemoryChunk *chunk);
 char *get_cache_path(int chunk_x, int chunk_y, int chunk_z);
+
+char *get_obj_cache_path(const char *id);
+int download_obj_file(const char *id, const char *cache_path);
+int fetch_obj_file(const char *id, char **obj_file_path);
+int parse_obj_file(const char *file_path, TriangleMesh *mesh);
+int get_triangle_mesh(const char *id, TriangleMesh *mesh);
+int write_trianglemesh_to_obj(const char *filename, const TriangleMesh *mesh);
 
 // Global cache
 LRUCache *cache;
@@ -560,6 +583,197 @@ int write_bmp(const char *filename, unsigned char *image, int width, int height)
     }
 
     free(row);
+    fclose(file);
+    return 0;
+}
+
+char *get_obj_cache_path(const char *id) {
+    char *path = (char *)malloc(512 * sizeof(char));
+    snprintf(path, 512, "%s/full-scrolls/Scroll1/PHercParis4.volpkg/paths/%s/%s.obj", CACHE_DIR, id, id);
+    return path;
+}
+
+int download_obj_file(const char *id, const char *cache_path) {
+    CURL *curl;
+    CURLcode res;
+    char url[512];
+
+    snprintf(url, sizeof(url), "https://dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/paths/%s/%s.obj", id, id);
+    FILE *file = fopen(cache_path, "wb");
+    if (!file) {
+        fprintf(stderr, "Failed to open file: %s\n", cache_path);
+        return -1;
+    }
+
+    curl = curl_easy_init();
+    if (curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, file);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, fwrite);
+
+        res = curl_easy_perform(curl);
+        if (res != CURLE_OK) {
+            fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+            fclose(file);
+            curl_easy_cleanup(curl);
+            return -1;
+        }
+        curl_easy_cleanup(curl);
+    }
+    fclose(file);
+    return 0;
+}
+
+int fetch_obj_file(const char *id, char **obj_file_path) {
+    char *cache_path = get_obj_cache_path(id);
+
+    // Check if file exists in cache
+    FILE *file = fopen(cache_path, "r");
+    if (file) {
+        fclose(file);
+        *obj_file_path = cache_path;
+        return 0; // File already cached
+    }
+
+    // Create directory structure and download the file
+    char *dir = strdup(cache_path);
+    char *last_slash = strrchr(dir, '/');
+    if (last_slash) {
+        *last_slash = '\0';
+        if (create_directories(dir) != 0) {
+            fprintf(stderr, "Failed to create directory: %s\n", dir);
+            free(dir);
+            free(cache_path);
+            return -1;
+        }
+    }
+    free(dir);
+
+    // Download the file
+    if (download_obj_file(id, cache_path) != 0) {
+        free(cache_path);
+        return -1;
+    }
+
+    *obj_file_path = cache_path;
+    return 0;
+}
+
+int parse_obj_file(const char *file_path, TriangleMesh *mesh) {
+    FILE *file = fopen(file_path, "r");
+    if (!file) {
+        fprintf(stderr, "Failed to open .obj file: %s\n", file_path);
+        return -1;
+    }
+
+    // Initial capacities for vertices and triangles
+    size_t vertex_capacity = 100;
+    size_t triangle_capacity = 100;
+
+    // Allocate memory for vertices and triangles
+    mesh->vertices = (Vertex *)malloc(vertex_capacity * sizeof(Vertex));
+    mesh->triangles = (Triangle *)malloc(triangle_capacity * sizeof(Triangle));
+    mesh->vertex_count = 0;
+    mesh->triangle_count = 0;
+
+    if (!mesh->vertices || !mesh->triangles) {
+        fprintf(stderr, "Failed to allocate memory for mesh.\n");
+        fclose(file);
+        return -1;
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), file)) {
+        // Parse vertex line (v)
+        if (strncmp(line, "v ", 2) == 0) {
+            // Resize the vertex array if capacity is exceeded
+            if (mesh->vertex_count >= vertex_capacity) {
+                vertex_capacity *= 2;
+                mesh->vertices = (Vertex *)realloc(mesh->vertices, vertex_capacity * sizeof(Vertex));
+                if (!mesh->vertices) {
+                    fprintf(stderr, "Failed to reallocate memory for vertices.\n");
+                    fclose(file);
+                    return -1;
+                }
+            }
+
+            // Read vertex coordinates
+            sscanf(line + 2, "%f %f %f", &mesh->vertices[mesh->vertex_count].x,
+                   &mesh->vertices[mesh->vertex_count].y, &mesh->vertices[mesh->vertex_count].z);
+            mesh->vertex_count++;
+        }
+        // Detect and skip vertex normal line (vn)
+        else if (strncmp(line, "vn ", 3) == 0) {
+            continue;
+        }
+        // Detect and skip texture coordinate line (vt)
+        else if (strncmp(line, "vt ", 3) == 0) {
+            continue;
+        }
+        // Parse face (f) line
+        else if (strncmp(line, "f ", 2) == 0) {
+            // Resize the triangle array if capacity is exceeded
+            if (mesh->triangle_count >= triangle_capacity) {
+                triangle_capacity *= 2;
+                mesh->triangles = (Triangle *)realloc(mesh->triangles, triangle_capacity * sizeof(Triangle));
+                if (!mesh->triangles) {
+                    fprintf(stderr, "Failed to reallocate memory for triangles.\n");
+                    fclose(file);
+                    return -1;
+                }
+            }
+
+            // Parse face with vertex indices (ignoring texture and normal indices)
+            int v1, v2, v3;
+            sscanf(line + 2, "%d/%*d/%*d %d/%*d/%*d %d/%*d/%*d", &v1, &v2, &v3);
+            mesh->triangles[mesh->triangle_count].v1 = v1 - 1;  // Convert to 0-based indexing
+            mesh->triangles[mesh->triangle_count].v2 = v2 - 1;
+            mesh->triangles[mesh->triangle_count].v3 = v3 - 1;
+            mesh->triangle_count++;
+        }
+    }
+
+    fclose(file);
+    return 0;
+}
+
+int get_triangle_mesh(const char *id, TriangleMesh *mesh) {
+    char *obj_file_path = NULL;
+    if (fetch_obj_file(id, &obj_file_path) != 0) {
+        fprintf(stderr, "Failed to fetch .obj file for ID: %s\n", id);
+        return -1;
+    }
+
+    if (parse_obj_file(obj_file_path, mesh) != 0) {
+        fprintf(stderr, "Failed to parse .obj file: %s\n", obj_file_path);
+        free(obj_file_path);
+        return -1;
+    }
+
+    free(obj_file_path);
+    return 0;
+}
+
+int write_trianglemesh_to_obj(const char *filename, const TriangleMesh *mesh) {
+    FILE *file = fopen(filename, "w");
+    if (!file) {
+        fprintf(stderr, "Error: Could not open file for writing: %s\n", filename);
+        return -1;
+    }
+
+    // Write vertices
+    for (size_t i = 0; i < mesh->vertex_count; ++i) {
+        const Vertex *v = &mesh->vertices[i];
+        fprintf(file, "v %f %f %f\n", v->x, v->y, v->z);
+    }
+
+    // Write faces (triangles)
+    for (size_t i = 0; i < mesh->triangle_count; ++i) {
+        const Triangle *t = &mesh->triangles[i];
+        // OBJ uses 1-based indexing, so increment the vertex indices by 1
+        fprintf(file, "f %d %d %d\n", t->v1 + 1, t->v2 + 1, t->v3 + 1);
+    }
+
     fclose(file);
     return 0;
 }
