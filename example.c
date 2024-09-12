@@ -88,5 +88,9 @@ int main() {
         printf("Wrote triangle mesh to mesh.obj\n");
     }
 
+    // Calculate the bounding box of the triangle mesh
+    RegionOfInterest mesh_bbox = get_mesh_bounding_box(&mesh);
+    printf("Bounding box of the triangle mesh: %d+%d, %d+%d, %d+%d\n", mesh_bbox.x_start, mesh_bbox.x_width, mesh_bbox.y_start, mesh_bbox.y_height, mesh_bbox.z_start, mesh_bbox.z_depth);
+
     return 0;
 }

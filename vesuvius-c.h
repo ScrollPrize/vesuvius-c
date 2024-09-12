@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <float.h>
 
 // Zarr config
 #define ZARR_URL "https://dl.ash2txt.org/other/dev/scrolls/1/volumes/54keV_7.91um.zarr/0/"
@@ -100,6 +101,7 @@ int fetch_obj_file(const char *id, char **obj_file_path);
 int parse_obj_file(const char *file_path, TriangleMesh *mesh);
 int get_triangle_mesh(const char *id, TriangleMesh *mesh);
 int write_trianglemesh_to_obj(const char *filename, const TriangleMesh *mesh);
+RegionOfInterest get_mesh_bounding_box(const TriangleMesh *mesh);
 
 // Global cache
 LRUCache *cache;
@@ -776,6 +778,36 @@ int write_trianglemesh_to_obj(const char *filename, const TriangleMesh *mesh) {
 
     fclose(file);
     return 0;
+}
+
+RegionOfInterest get_mesh_bounding_box(const TriangleMesh *mesh) {
+    // Initialize the bounding box to extreme values
+    float min_x = FLT_MAX, min_y = FLT_MAX, min_z = FLT_MAX;
+    float max_x = -FLT_MAX, max_y = -FLT_MAX, max_z = -FLT_MAX;
+
+    // Traverse through all vertices to find the bounding box
+    for (size_t i = 0; i < mesh->vertex_count; ++i) {
+        const Vertex *v = &mesh->vertices[i];
+
+        if (v->x < min_x) min_x = v->x;
+        if (v->y < min_y) min_y = v->y;
+        if (v->z < min_z) min_z = v->z;
+
+        if (v->x > max_x) max_x = v->x;
+        if (v->y > max_y) max_y = v->y;
+        if (v->z > max_z) max_z = v->z;
+    }
+
+    // Calculate the dimensions of the bounding box
+    RegionOfInterest roi;
+    roi.x_start = min_x;
+    roi.y_start = min_y;
+    roi.z_start = min_z;
+    roi.x_width = max_x - min_x;
+    roi.y_height = max_y - min_y;
+    roi.z_depth = max_z - min_z;
+
+    return roi;
 }
 
 #endif // VESUVIUS_H
