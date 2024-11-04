@@ -1,6 +1,7 @@
 #ifndef VESUVIUS_H
 #define VESUVIUS_H
 
+
 #include <ctype.h>
 #include <limits.h>
 #include <stddef.h>
@@ -826,59 +827,35 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
 //   the struct will take ownership of the pointer and the pointer shall be cleaned up in the _free function.
 //   The caller loses ownership of the pointer
 // - index order is in Z Y X order
-// - a 0 / SUCCESS return code indicates success for functions that do NOT return a pointer
+// - a 0 return code indicates success for functions that do NOT return a pointer
+// - a non zero return code indicates failure
+// - a NULL pointer indicates failure for functions that return a pointer
 
+// in order to use Vesuvius-c, define VESUVIUS_IMPL in one .c file and then #include "vesuvius-c.h" 
+// in order to use curl, which depends on libcurl and ssl, define VESUVIUS_CURL_IMPL 
+// in order to use zarr, which depends on cblosc2 and json.h, define VESUVIUS_ZARR_IMPL
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <ctype.h>
 #include <stdint.h>
 #include <math.h>
 #include <float.h>
 #include <stdbool.h>
 #include <assert.h>
-
-
 #include <sys/stat.h>
 #include <string.h>
 #include <errno.h>
+#include <time.h>
+
+#ifdef VESUVIUS_CURL_IMPL
 #include <curl/curl.h>
-
-
-#ifndef VESUVIUS_HEADER_ONLY
-  #ifndef VESUVIUS_STATIC_LIB
-    #ifndef VESUVIUS_DYNAMIC_LIB
-      #define VESUVIUS_HEADER_ONLY
-    #endif
-  #endif
 #endif
 
-
-#ifdef VESUVIUS_HEADER_ONLY
-  #define PUBLIC static inline __attribute__((visibility("hidden")))
-  #define PRIVATE static inline __attribute__((visibility("hidden")))
-#elifdef VESUVIUS_STATIC_LIB
-  #define PUBLIC static inline __attribute__((visibility("default")))
-  #define PRIVATE static inline __attribute__((visibility("hidden")))
-#elifdef VESUVIUS_DYNAMIC_LIB
-  #ifdef _WIN32
-    #define PUBLIC __declspec(dllexport)
-    #define PRIVATE static inline
-  #else
-    #define PUBLIC  __attribute__((visibility("default")))
-    #define PRIVATE static inline __attribute__((visibility("hidden")))
-  #endif
-#else
-  #define PUBLIC static inline
-  #define PRIVATE static inline
+#ifdef VESUVIUS_ZARR_IMPL
+#include <blosc2.h>
+#include <json.h>
 #endif
-
-typedef enum errcode {
-  SUCCESS = 0,
-  FAIL = 1,
-} errcode;
-
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -891,10 +868,359 @@ typedef int64_t s64;
 typedef float f32;
 typedef double f64;
 
-//utils
+
+typedef struct histogram {
+    s32 num_bins;
+    f32 min_value;
+    f32 max_value;
+    f32 bin_width;
+    u32 *bins;
+} histogram;
+
+typedef struct hist_stats {
+    f32 mean;
+    f32 median;
+    f32 mode;
+    u32 mode_count;
+    f32 std_dev;
+} hist_stats;
+
+#ifdef VESUVIUS_CURL_IMPL
+typedef struct {
+    char* buffer;
+    size_t size;
+} DownloadBuffer;
+#endif
+
+typedef struct chunk {
+    int dims[3];
+    float data[];
+} chunk __attribute__((aligned(16)));
+
+typedef struct slice {
+    int dims[2];
+    float data[];
+} slice __attribute__((aligned(16)));
+
+// meshes are triangle only. every 3 entries in vertices corresponds to a new vertex
+// normals are 3 component
+typedef struct {
+    f32 *vertices; // cannot be null
+    s32 *indices; // cannot be null
+    f32 *normals; // can be null if no normals
+    s32 vertex_count;
+    s32 index_count;
+} mesh;
+
+#define MAX_LINE_LENGTH 1024
+#define MAX_HEADER_LINES 100
+
+typedef struct {
+    char type[32];
+    s32 dimension;
+    char space[32];
+    s32 sizes[16];
+    f32 space_directions[16][3];
+    char endian[16];
+    char encoding[32];
+    f32 space_origin[3];
+
+    size_t data_size;
+    void* data;
+
+    bool is_valid;
+} nrrd;
 
 
-PRIVATE void trim(char* str) {
+// PPM format types
+typedef enum ppm_type {
+    P3,  // ASCII format
+    P6   // Binary format
+} ppm_type;
+
+typedef struct ppm {
+    u32 width;
+    u32 height;
+    u8 max_val;
+    u8* data;  // RGB data in row-major order
+} ppm;
+
+// tiff
+#define TIFFTAG_SUBFILETYPE 254
+#define TIFFTAG_IMAGEWIDTH 256
+#define TIFFTAG_IMAGELENGTH 257
+#define TIFFTAG_BITSPERSAMPLE 258
+#define TIFFTAG_COMPRESSION 259
+#define TIFFTAG_PHOTOMETRIC 262
+#define TIFFTAG_IMAGEDESCRIPTION 270
+#define TIFFTAG_SOFTWARE 305
+#define TIFFTAG_DATETIME 306
+#define TIFFTAG_SAMPLESPERPIXEL 277
+#define TIFFTAG_ROWSPERSTRIP 278
+#define TIFFTAG_PLANARCONFIG 284
+#define TIFFTAG_RESOLUTIONUNIT 296
+#define TIFFTAG_XRESOLUTION 282
+#define TIFFTAG_YRESOLUTION 283
+#define TIFFTAG_SAMPLEFORMAT 339
+#define TIFFTAG_STRIPOFFSETS 273
+#define TIFFTAG_STRIPBYTECOUNTS 279
+
+#define TIFF_BYTE 1
+#define TIFF_ASCII 2
+#define TIFF_SHORT 3
+#define TIFF_LONG 4
+#define TIFF_RATIONAL 5
+
+typedef struct {
+    uint32_t offset;
+    uint32_t byteCount;
+} StripInfo;
+
+typedef struct {
+    uint32_t width;
+    uint32_t height;
+    uint16_t bitsPerSample;
+    uint16_t compression;
+    uint16_t photometric;
+    uint16_t samplesPerPixel;
+    uint32_t rowsPerStrip;
+    uint16_t planarConfig;
+    uint16_t sampleFormat;
+    StripInfo stripInfo;
+    char imageDescription[256];
+    char software[256];
+    char dateTime[20];
+    float xResolution;
+    float yResolution;
+    uint16_t resolutionUnit;
+    uint32_t subfileType;
+} DirectoryInfo;
+
+typedef struct {
+    DirectoryInfo* directories;
+    uint16_t depth;
+    size_t dataSize;
+    void* data;
+    bool isValid;
+    char errorMsg[256];
+} TiffImage;
+
+// vol
+// A volume is an entire scroll
+//   - for Scroll 1 it is all 14376 x 7888 x 8096 voxels
+//   - the dtype is uint8 or uint16
+//
+
+typedef struct volume {
+    s32 dims[3];
+    bool is_zarr;
+    bool is_tif_stack;
+    bool uses_3d_tif;
+    char* cache_dir;
+    u64 vol_id;
+} volume;
+
+//zarr
+#ifdef VESUVIUS_ZARR_IMPL
+typedef struct zarr_compressor_settings {
+    int32_t blocksize;
+    int32_t clevel;
+    char cname[32];
+    char id[32];
+    int32_t shuffle;
+} zarr_compressor_settings;
+
+typedef struct zarr_metadata {
+    int32_t shape[3];
+    int32_t chunks[3];
+    zarr_compressor_settings compressor;
+    char dtype[8];
+    int32_t fill_value;
+    char order; // Single character 'C' or 'F'
+    int32_t zarr_format;
+} zarr_metadata;
+#endif
+
+
+#ifndef VESUVIUS_IMPL
+// utils
+void trim(char* str);
+void skip_line(FILE *fp);
+bool str_starts_with(const char* str, const char* prefix);
+int mkdir_p(const char* path);
+
+// chamfer
+f32 squared_distance(const f32* p1, const f32* p2);
+f32 min_distance_to_set(const f32* point, const f32* point_set, s32 set_size);
+f32 chamfer_distance(const f32* set1, s32 size1, const f32* set2, s32 size2);
+
+// curl
+size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp);
+long download(const char* url, void** out_buffer);
+
+// histogram
+histogram *histogram_new(s32 num_bins, f32 min_value, f32 max_value);
+void histogram_free(histogram *hist);
+s32 get_bin_index(const histogram* hist, f32 value);
+histogram* slice_histogram(const f32* data, s32 dimy, s32 dimx, s32 num_bins);
+histogram* chunk_histogram(const f32* data, s32 dimz, s32 dimy, s32 dimx, s32 num_bins);
+f32 get_slice_value(const f32* data, s32 y, s32 x, s32 dimx);
+f32 get_chunk_value(const f32* data, s32 z, s32 y, s32 x, s32 dimy, s32 dimx);
+s32 write_histogram_to_csv(const histogram *hist, const char *filename);
+hist_stats calculate_histogram_stats(const histogram *hist);
+
+// math
+float maxfloat(float a, float b);
+float minfloat(float a, float b);
+float avgfloat(float *data, int len);
+chunk *chunk_new(int dims[static 3]);
+void chunk_free(chunk *chunk);
+slice *slice_new(int dims[static 2]);
+void slice_free(slice *slice);
+f32 slice_get(slice *slice, s32 y, s32 x);
+void slice_set(slice *slice, s32 y, s32 x, f32 data);
+f32 chunk_get(chunk *chunk, s32 z, s32 y, s32 x);
+void chunk_set(chunk *chunk, s32 z, s32 y, s32 x, f32 data);
+chunk* maxpool(chunk* inchunk, s32 kernel, s32 stride);
+chunk *avgpool(chunk *inchunk, s32 kernel, s32 stride);
+chunk *sumpool(chunk *inchunk, s32 kernel, s32 stride);
+chunk *create_box_kernel(s32 size);
+chunk* convolve3d(chunk* input, chunk* kernel);
+chunk* unsharp_mask_3d(chunk* input, float amount, s32 kernel_size);
+chunk* normalize_chunk(chunk* input);
+chunk* transpose(chunk* input, const char* current_layout);
+
+// mesh
+mesh* mesh_new(f32 *vertices, f32 *normals, s32 *indices, s32 vertex_count, s32 index_count);
+void mesh_free(mesh *mesh);
+void mesh_get_bounds(const mesh *m,
+                    f32 *origin_z, f32 *origin_y, f32 *origin_x,
+                    f32 *length_z, f32 *length_y, f32 *length_x);
+void mesh_translate(mesh *m, f32 z, f32 y, f32 x);
+void mesh_scale(mesh *m, f32 scale_z, f32 scale_y, f32 scale_x);
+void interpolate_vertex(f32 isovalue,
+                                    f32 v1, f32 v2,
+                                    f32 x1, f32 y1, f32 z1,
+                                    f32 x2, f32 y2, f32 z2,
+                                    f32* out_x, f32* out_y, f32* out_z);
+f32 get_value(const f32* values, s32 x, s32 y, s32 z, s32 dimx, s32 dimy, s32 dimz);
+void process_cube(const f32* values,
+                        s32 x, s32 y, s32 z,
+                        s32 dimx, s32 dimy, s32 dimz,
+                        f32 isovalue,
+                        f32* vertices,
+                        s32* indices,
+                        s32* vertex_count,
+                        s32* index_count);
+s32 march_cubes(const f32* values,
+                s32 dimz, s32 dimy, s32 dimx,
+                f32 isovalue,
+                f32** out_vertices,      //  [z,y,x,z,y,x,...]
+                s32** out_indices,
+                s32* out_vertex_count,
+                s32* out_index_count);
+
+// nrrd
+bool parse_sizes(char* value, nrrd* nrrd);
+bool parse_space_directions(char* value, nrrd* nrrd);
+bool parse_space_origin(char* value, nrrd* nrrd);
+size_t get_type_size(const char* type);
+bool read_raw_data(FILE* fp, nrrd* nrrd);
+bool read_gzip_data(FILE* fp, nrrd* nrrd);
+nrrd* nrrd_read(const char* filename);
+void nrrd_free(nrrd* nrrd);
+
+// obj
+s32 read_obj(const char* filename,
+            f32** vertices, s32** indices,
+            s32* vertex_count, s32* index_count);
+s32 write_obj(const char* filename,
+             const f32* vertices, const s32* indices,
+             s32 vertex_count, s32 index_count);
+
+// ply
+s32 write_ply(const char *filename,
+                    const f32 *vertices,
+                    const f32 *normals, // can be NULL if no normals
+                    const s32 *indices,
+                    s32 vertex_count,
+                    s32 index_count);
+s32 read_ply(const char *filename,
+                          f32 **out_vertices,
+                          f32 **out_normals,
+                          s32 **out_indices,
+                          s32 *out_vertex_count,
+                          s32 *out_normal_count,
+                          s32 *out_index_count);
+
+//ppm
+ppm* ppm_new(u32 width, u32 height);
+inline void ppm_free(ppm* img);
+void skip_whitespace_and_comments(FILE* fp);
+bool read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val);
+ppm* read_ppm(const char* filename);
+int write_ppm(const char* filename, const ppm* img, ppm_type type);
+void ppm_set_pixel(ppm* img, u32 x, u32 y, u8 r, u8 g, u8 b);
+void ppm_get_pixel(const ppm* img, u32 x, u32 y, u8* r, u8* g, u8* b);
+
+//tiff
+uint32_t readBytes(FILE* fp, int count, int littleEndian);
+void readString(FILE* fp, char* str, uint32_t offset, uint32_t count, long currentPos);
+float readRational(FILE* fp, uint32_t offset, int littleEndian, long currentPos);
+void readIFDEntry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart);
+bool validateDirectory(DirectoryInfo* dir, TiffImage* img);
+TiffImage* readTIFF(const char* filename);
+void freeTIFF(TiffImage* img);
+const char* getCompressionName(uint16_t compression);
+const char* getPhotometricName(uint16_t photometric);
+const char* getPlanarConfigName(uint16_t config);
+const char* getSampleFormatName(uint16_t format);
+const char* getResolutionUnitName(uint16_t unit);
+void printTIFFTags(const TiffImage* img, int directory);
+void printAllTIFFTags(const TiffImage* img);
+size_t getTIFFDirectorySize(const TiffImage* img, int directory);
+void* readTIFFDirectoryData(const TiffImage* img, int directory);
+uint16_t getTIFFPixel16FromBuffer(const uint16_t* buffer, int y, int x, int width);
+uint8_t getTIFFPixel8FromBuffer(const uint8_t* buffer, int y, int x, int width);
+void writeBytes(FILE* fp, uint32_t value, int count, int littleEndian);
+void writeString(FILE* fp, const char* str, uint32_t offset);
+void writeRational(FILE* fp, float value, uint32_t offset, int littleEndian);
+void getCurrentDateTime(char* dateTime);
+uint32_t writeIFDEntry(FILE* fp, uint16_t tag, uint16_t type, uint32_t count, uint32_t value, int littleEndian);
+int writeTIFF(const char* filename, const TiffImage* img, bool littleEndian);
+TiffImage* createTIFF(uint32_t width, uint32_t height, uint16_t depth, uint16_t bitsPerSample);
+
+// vcps
+int read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count);
+int write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count);
+int read_vcps(const char* filename,
+              size_t* width, size_t* height, size_t* dim,
+              void* data, const char* dst_type);
+int write_vcps(const char* filename,
+               size_t width, size_t height, size_t dim,
+               const void* data, const char* src_type, const char* dst_type);
+
+// volume
+volume *volume_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool uses_3d_tif, char* cache_dir, u64 vol_id);
+chunk* volume_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]);
+
+// zarr
+#ifdef VESUVIUS_ZARR_IMPL
+struct json_value_s *find_value(const struct json_object_s *obj, const char *key);
+void parse_int32_array(struct json_array_s *array, int32_t output[3]);
+int parse_zarr_metadata(const char *json_string, zarr_metadata *metadata);
+zarr_metadata parse_zarray(char *path);
+#endif
+
+// vesuvius specific
+chunk *tiff_to_chunk(const char *tiffpath);
+slice *tiff_to_slice(const char *tiffpath, int index);
+int slice_fill(slice *slice, volume *vol, int start[static 2], int axis);
+int chunk_fill(chunk *chunk, volume *vol, int start[static 3]);
+
+#else //ifdef VESUVIUS_IMPL
+
+void trim(char* str) {
   char* end;
   while(isspace(*str)) str++;
   if(*str == 0) return;
@@ -903,17 +1229,16 @@ PRIVATE void trim(char* str) {
   end[1] = '\0';
 }
 
-PRIVATE void skip_line(FILE *fp) {
+void skip_line(FILE *fp) {
   char buffer[1024];
   fgets(buffer, sizeof(buffer), fp);
 }
 
-PRIVATE bool str_starts_with(const char* str, const char* prefix) {
+bool str_starts_with(const char* str, const char* prefix) {
   return strncmp(str, prefix, strlen(prefix)) == 0;
 }
 
-
-PRIVATE int mkdir_p(const char* path) {
+int mkdir_p(const char* path) {
   char tmp[1024];
   char* p = NULL;
   size_t len;
@@ -945,7 +1270,7 @@ PRIVATE int mkdir_p(const char* path) {
 
 // chamfer
 
-PRIVATE f32 squared_distance(const f32* p1, const f32* p2) {
+f32 squared_distance(const f32* p1, const f32* p2) {
   f32 dz = p1[0] - p2[0];
   f32 dy = p1[1] - p2[1];
   f32 dx = p1[2] - p2[2];
@@ -953,7 +1278,7 @@ PRIVATE f32 squared_distance(const f32* p1, const f32* p2) {
 }
 
 
-PRIVATE f32 min_distance_to_set(const f32* point, const f32* point_set, s32 set_size) {
+f32 min_distance_to_set(const f32* point, const f32* point_set, s32 set_size) {
   f32 min_dist = FLT_MAX;
 
   for (s32 i = 0; i < set_size; i++) {
@@ -965,7 +1290,7 @@ PRIVATE f32 min_distance_to_set(const f32* point, const f32* point_set, s32 set_
   return min_dist;
 }
 
-PUBLIC f32 chamfer_distance(const f32* set1, s32 size1, const f32* set2, s32 size2) {
+f32 chamfer_distance(const f32* set1, s32 size1, const f32* set2, s32 size2) {
   f32 sum1 = 0.0f;
   f32 sum2 = 0.0f;
 
@@ -981,13 +1306,8 @@ PUBLIC f32 chamfer_distance(const f32* set1, s32 size1, const f32* set2, s32 siz
 }
 
 //curl
-
-typedef struct {
-    char* buffer;
-    size_t size;
-} DownloadBuffer;
-
-PRIVATE size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp) {
+#ifdef VESUVIUS_CURL_IMPL
+size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     DownloadBuffer *mem = userp;
 
@@ -1004,7 +1324,7 @@ PRIVATE size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *us
     return realsize;
 }
 
-PUBLIC long download(const char* url, void** out_buffer) {
+long download(const char* url, void** out_buffer) {
     CURL* curl;
     CURLcode res;
     long http_code = 0;
@@ -1056,28 +1376,15 @@ PUBLIC long download(const char* url, void** out_buffer) {
     *out_buffer = chunk.buffer;
     return chunk.size;
 }
+#else
+long download(const char* url, void** out_buffer) {
+    printf("curl support must be enabled to download files\n");
+    return -1;
+}
+#endif
 
 // histogram
-
-
-typedef struct histogram {
-  s32 num_bins;
-  f32 min_value;
-  f32 max_value;
-  f32 bin_width;
-  u32 *bins;
-} histogram;
-
-typedef struct hist_stats {
-  f32 mean;
-  f32 median;
-  f32 mode;
-  u32 mode_count;
-  f32 std_dev;
-} hist_stats;
-
-
-PUBLIC histogram *histogram_new(s32 num_bins, f32 min_value, f32 max_value) {
+histogram *histogram_new(s32 num_bins, f32 min_value, f32 max_value) {
   histogram *hist = malloc(sizeof(histogram));
   if (!hist) {
     return NULL;
@@ -1097,7 +1404,7 @@ PUBLIC histogram *histogram_new(s32 num_bins, f32 min_value, f32 max_value) {
   return hist;
 }
 
-PUBLIC void histogram_free(histogram *hist) {
+void histogram_free(histogram *hist) {
   if (hist) {
     free(hist->bins);
     free(hist);
@@ -1105,7 +1412,7 @@ PUBLIC void histogram_free(histogram *hist) {
 }
 
 
-PRIVATE s32 get_bin_index(const histogram* hist, f32 value) {
+s32 get_bin_index(const histogram* hist, f32 value) {
     if (value <= hist->min_value) return 0;
     if (value >= hist->max_value) return hist->num_bins - 1;
 
@@ -1114,7 +1421,7 @@ PRIVATE s32 get_bin_index(const histogram* hist, f32 value) {
     return bin;
 }
 
-PUBLIC histogram* slice_histogram(const f32* data,
+histogram* slice_histogram(const f32* data,
                                       s32 dimy, s32 dimx,
                                       s32 num_bins) {
     if (!data || num_bins <= 0) {
@@ -1144,7 +1451,7 @@ PUBLIC histogram* slice_histogram(const f32* data,
     return hist;
 }
 
-PUBLIC histogram* chunk_histogram(const f32* data,
+histogram* chunk_histogram(const f32* data,
                                       s32 dimz, s32 dimy, s32 dimx,
                                       s32 num_bins) {
     if (!data || num_bins <= 0) {
@@ -1174,15 +1481,15 @@ PUBLIC histogram* chunk_histogram(const f32* data,
     return hist;
 }
 
-PRIVATE f32 get_slice_value(const f32* data, s32 y, s32 x, s32 dimx) {
+f32 get_slice_value(const f32* data, s32 y, s32 x, s32 dimx) {
     return data[y * dimx + x];
 }
 
-PRIVATE f32 get_chunk_value(const f32* data, s32 z, s32 y, s32 x,
+f32 get_chunk_value(const f32* data, s32 z, s32 y, s32 x,
                                   s32 dimy, s32 dimx) {
     return data[z * (dimy * dimx) + y * dimx + x];
 }
-PUBLIC s32 write_histogram_to_csv(const histogram *hist, const char *filename) {
+s32 write_histogram_to_csv(const histogram *hist, const char *filename) {
   FILE *fp = fopen(filename, "w");
   if (!fp) {
     return 1;
@@ -1200,7 +1507,7 @@ PUBLIC s32 write_histogram_to_csv(const histogram *hist, const char *filename) {
   return 0;
 }
 
-PUBLIC hist_stats calculate_histogram_stats(const histogram *hist) {
+hist_stats calculate_histogram_stats(const histogram *hist) {
   hist_stats stats = {0};
 
   unsigned long long total_count = 0;
@@ -1256,25 +1563,15 @@ PUBLIC hist_stats calculate_histogram_stats(const histogram *hist) {
 //   - increasing X means looking farther right in a slice
 
 
-typedef struct chunk {
-  int dims[3];
-  float data[];
-} chunk __attribute__((aligned(16)));
-
-typedef struct slice {
-  int dims[2];
-  float data[];
-} slice __attribute__((aligned(16)));
-
-PRIVATE float maxfloat(float a, float b) { return a > b ? a : b; }
-PRIVATE float minfloat(float a, float b) { return a < b ? a : b; }
-PRIVATE float avgfloat(float *data, int len) {
+float maxfloat(float a, float b) { return a > b ? a : b; }
+float minfloat(float a, float b) { return a < b ? a : b; }
+float avgfloat(float *data, int len) {
   double sum = 0.0;
   for (int i = 0; i < len; i++) sum += data[i];
   return sum / len;
 }
 
-PUBLIC chunk *chunk_new(int dims[static 3]) {
+chunk *chunk_new(int dims[static 3]) {
   chunk *ret = malloc(sizeof(chunk) + dims[0] * dims[1] * dims[2] * sizeof(float));
 
   if (ret == NULL) {
@@ -1288,11 +1585,11 @@ PUBLIC chunk *chunk_new(int dims[static 3]) {
   return ret;
 }
 
-PUBLIC void chunk_free(chunk *chunk) {
+void chunk_free(chunk *chunk) {
   free(chunk);
 }
 
-PUBLIC slice *slice_new(int dims[static 2]) {
+slice *slice_new(int dims[static 2]) {
   slice *ret = malloc(sizeof(slice) + dims[0] * dims[1] * sizeof(float));
 
   if (ret == NULL) {
@@ -1306,28 +1603,28 @@ PUBLIC slice *slice_new(int dims[static 2]) {
   return ret;
 }
 
-PUBLIC void slice_free(slice *slice) {
+void slice_free(slice *slice) {
   free(slice);
 }
 
-PUBLIC f32 slice_get(slice *slice, s32 y, s32 x) {
+f32 slice_get(slice *slice, s32 y, s32 x) {
   return slice->data[y * slice->dims[1] + x];
 }
 
-PUBLIC void slice_set(slice *slice, s32 y, s32 x, f32 data) {
+void slice_set(slice *slice, s32 y, s32 x, f32 data) {
   slice->data[y * slice->dims[1] + x] = data;
 }
 
-PUBLIC f32 chunk_get(chunk *chunk, s32 z, s32 y, s32 x) {
+f32 chunk_get(chunk *chunk, s32 z, s32 y, s32 x) {
   return chunk->data[z * chunk->dims[1] * chunk->dims[2] + y * chunk->dims[2] + x];
 }
 
-PUBLIC void chunk_set(chunk *chunk, s32 z, s32 y, s32 x, f32 data) {
+void chunk_set(chunk *chunk, s32 z, s32 y, s32 x, f32 data) {
   chunk->data[z * chunk->dims[1] * chunk->dims[2] + y * chunk->dims[2] + x] = data;
 }
 
 
-PUBLIC chunk* maxpool(chunk* inchunk, s32 kernel, s32 stride) {
+chunk* maxpool(chunk* inchunk, s32 kernel, s32 stride) {
   s32 dims[3] = {
     (inchunk->dims[0] + stride - 1) / stride, (inchunk->dims[1] + stride - 1) / stride,
     (inchunk->dims[2] + stride - 1) / stride
@@ -1351,7 +1648,7 @@ PUBLIC chunk* maxpool(chunk* inchunk, s32 kernel, s32 stride) {
   return ret;
 }
 
-PUBLIC chunk *avgpool(chunk *inchunk, s32 kernel, s32 stride) {
+chunk *avgpool(chunk *inchunk, s32 kernel, s32 stride) {
   s32 dims[3] = {
     (inchunk->dims[0] + stride - 1) / stride, (inchunk->dims[1] + stride - 1) / stride,
     (inchunk->dims[2] + stride - 1) / stride
@@ -1379,7 +1676,7 @@ PUBLIC chunk *avgpool(chunk *inchunk, s32 kernel, s32 stride) {
   return ret;
 }
 
-PUBLIC chunk *sumpool(chunk *inchunk, s32 kernel, s32 stride) {
+chunk *sumpool(chunk *inchunk, s32 kernel, s32 stride) {
   s32 dims[3] = {
     (inchunk->dims[0] + stride - 1) / stride, (inchunk->dims[1] + stride - 1) / stride,
     (inchunk->dims[2] + stride - 1) / stride
@@ -1403,7 +1700,7 @@ PUBLIC chunk *sumpool(chunk *inchunk, s32 kernel, s32 stride) {
 }
 
 
-PRIVATE chunk *create_box_kernel(s32 size) {
+chunk *create_box_kernel(s32 size) {
   int dims[3] = {size,size,size};
   chunk* kernel = chunk_new(dims);
   float value = 1.0f / (size * size * size);
@@ -1413,7 +1710,7 @@ PRIVATE chunk *create_box_kernel(s32 size) {
   return kernel;
 }
 
-PRIVATE chunk* convolve3d(chunk* input, chunk* kernel) {
+chunk* convolve3d(chunk* input, chunk* kernel) {
 
   s32 dims[3] = {input->dims[0], input->dims[1], input->dims[2]};
 
@@ -1444,7 +1741,7 @@ PRIVATE chunk* convolve3d(chunk* input, chunk* kernel) {
   return ret;
 }
 
-PUBLIC chunk* unsharp_mask_3d(chunk* input, float amount, s32 kernel_size) {
+chunk* unsharp_mask_3d(chunk* input, float amount, s32 kernel_size) {
   int dims[3] = {input->dims[0], input->dims[1], input->dims[2]};
   chunk* kernel = create_box_kernel(kernel_size);
   chunk* blurred = convolve3d(input, kernel);
@@ -1467,7 +1764,7 @@ PUBLIC chunk* unsharp_mask_3d(chunk* input, float amount, s32 kernel_size) {
   return output;
 }
 
-PUBLIC chunk* normalize_chunk(chunk* input) {
+chunk* normalize_chunk(chunk* input) {
   // Create output chunk with same dimensions
   int dims[3] = {input->dims[0], input->dims[1], input->dims[2]};
   chunk* output = chunk_new(dims);
@@ -1513,7 +1810,7 @@ PUBLIC chunk* normalize_chunk(chunk* input) {
   return output;
 }
 
-PUBLIC chunk* transpose(chunk* input, const char* current_layout) {
+chunk* transpose(chunk* input, const char* current_layout) {
     if (!input || !current_layout || strlen(current_layout) != 3) {
         return NULL;
     }
@@ -1532,7 +1829,7 @@ PUBLIC chunk* transpose(chunk* input, const char* current_layout) {
                 mapping[2] = i;
                 break;
             default:
-                return NULL;  // Invalid
+                return NULL;
         }
     }
 
@@ -1551,14 +1848,12 @@ PUBLIC chunk* transpose(chunk* input, const char* current_layout) {
     for (int z = 0; z < new_dims[0]; z++) {
         for (int y = 0; y < new_dims[1]; y++) {
             for (int x = 0; x < new_dims[2]; x++) {
-                // Create index array for the input layout
                 int idx[3] = {z, y, x};
 
-                // Map the indices according to the input layout
                 int old_indices[3] = {
-                    idx[mapping[0]],  // map z position
-                    idx[mapping[1]],  // map y position
-                    idx[mapping[2]]   // map x position
+                    idx[mapping[0]],  // Z
+                    idx[mapping[1]],  // Y
+                    idx[mapping[2]]   // C
                 };
 
                 float value = chunk_get(input, old_indices[0], old_indices[1], old_indices[2]);
@@ -1572,18 +1867,7 @@ PUBLIC chunk* transpose(chunk* input, const char* current_layout) {
 
 // mesh
 
-
-// meshes are triangle only. every 3 entries in vertices corresponds to a new vertex
-// normals are 3 component
-typedef struct {
-    f32 *vertices;
-    s32 *indices;
-    f32 *normals;
-    s32 vertex_count;
-    s32 index_count;
-} mesh;
-
-PUBLIC mesh* mesh_new(f32 *vertices,
+mesh* mesh_new(f32 *vertices,
                     f32 *normals, // can be NULL if no normals
                     s32 *indices,
                     s32 vertex_count,
@@ -1599,7 +1883,7 @@ PUBLIC mesh* mesh_new(f32 *vertices,
 }
 
 
-PUBLIC void mesh_free(mesh *mesh) {
+void mesh_free(mesh *mesh) {
     if (mesh) {
         free(mesh->vertices);
         free(mesh->indices);
@@ -1608,7 +1892,7 @@ PUBLIC void mesh_free(mesh *mesh) {
     }
 }
 
-PUBLIC void mesh_get_bounds(const mesh *m,
+void mesh_get_bounds(const mesh *m,
                     f32 *origin_z, f32 *origin_y, f32 *origin_x,
                     f32 *length_z, f32 *length_y, f32 *length_x) {
     if (!m || !m->vertices || m->vertex_count <= 0) {
@@ -1629,15 +1913,12 @@ PUBLIC void mesh_get_bounds(const mesh *m,
     f32 max_x = m->vertices[2];
 
     for (s32 i = 0; i < m->vertex_count * 3; i += 3) {
-        // Z
         if (m->vertices[i] < min_z) min_z = m->vertices[i];
         if (m->vertices[i] > max_z) max_z = m->vertices[i];
 
-        // Y
         if (m->vertices[i + 1] < min_y) min_y = m->vertices[i + 1];
         if (m->vertices[i + 1] > max_y) max_y = m->vertices[i + 1];
 
-        // X
         if (m->vertices[i + 2] < min_x) min_x = m->vertices[i + 2];
         if (m->vertices[i + 2] > max_x) max_x = m->vertices[i + 2];
     }
@@ -1651,7 +1932,7 @@ PUBLIC void mesh_get_bounds(const mesh *m,
     if (length_x) *length_x = max_x - min_x;
 }
 
-PUBLIC void mesh_translate(mesh *m, f32 z, f32 y, f32 x) {
+void mesh_translate(mesh *m, f32 z, f32 y, f32 x) {
     if (!m || !m->vertices || m->vertex_count <= 0) {
         return;
     }
@@ -1663,7 +1944,7 @@ PUBLIC void mesh_translate(mesh *m, f32 z, f32 y, f32 x) {
     }
 }
 
-PUBLIC void mesh_scale(mesh *m, f32 scale_z, f32 scale_y, f32 scale_x) {
+void mesh_scale(mesh *m, f32 scale_z, f32 scale_y, f32 scale_x) {
     if (!m || !m->vertices || m->vertex_count <= 0) {
         return;
     }
@@ -1694,6 +1975,50 @@ PUBLIC void mesh_scale(mesh *m, f32 scale_z, f32 scale_y, f32 scale_x) {
         }
     }
 }
+
+void interpolate_vertex(f32 isovalue,
+                                    f32 v1, f32 v2,
+                                    f32 x1, f32 y1, f32 z1,
+                                    f32 x2, f32 y2, f32 z2,
+                                    f32* out_x, f32* out_y, f32* out_z) {
+    if (fabs(isovalue - v1) < 0.00001f) {
+        *out_x = x1;
+        *out_y = y1;
+        *out_z = z1;
+        return;
+    }
+    if (fabs(isovalue - v2) < 0.00001f) {
+        *out_x = x2;
+        *out_y = y2;
+        *out_z = z2;
+        return;
+    }
+    if (fabs(v1 - v2) < 0.00001f) {
+        *out_x = x1;
+        *out_y = y1;
+        *out_z = z1;
+        return;
+    }
+
+    f32 mu = (isovalue - v1) / (v2 - v1);
+    *out_x = x1 + mu * (x2 - x1);
+    *out_y = y1 + mu * (y2 - y1);
+    *out_z = z1 + mu * (z2 - z1);
+}
+
+f32 get_value(const f32* values, s32 x, s32 y, s32 z,
+                            s32 dimx, s32 dimy, s32 dimz) {
+    return values[z * (dimx * dimy) + y * dimx + x];
+}
+
+void process_cube(const f32* values,
+                        s32 x, s32 y, s32 z,
+                        s32 dimx, s32 dimy, s32 dimz,
+                        f32 isovalue,
+                        f32* vertices,
+                        s32* indices,
+                        s32* vertex_count,
+                        s32* index_count) {
 
 
 static const s32 edgeTable[256]={
@@ -1731,7 +2056,7 @@ static const s32 edgeTable[256]={
 0x70c, 0x605, 0x50f, 0x406, 0x30a, 0x203, 0x109, 0x0   };
 
 static const s32 triTable[256][16] =
-{{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+{ {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 {0, 8, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 {0, 1, 9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 {1, 8, 3, 9, 8, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
@@ -1986,53 +2311,7 @@ static const s32 triTable[256][16] =
 {1, 3, 8, 9, 1, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 {0, 9, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 {0, 3, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}};
-
-
-// Helper function to interpolate between two points
-PRIVATE void interpolate_vertex(f32 isovalue,
-                                    f32 v1, f32 v2,
-                                    f32 x1, f32 y1, f32 z1,
-                                    f32 x2, f32 y2, f32 z2,
-                                    f32* out_x, f32* out_y, f32* out_z) {
-    if (fabs(isovalue - v1) < 0.00001f) {
-        *out_x = x1;
-        *out_y = y1;
-        *out_z = z1;
-        return;
-    }
-    if (fabs(isovalue - v2) < 0.00001f) {
-        *out_x = x2;
-        *out_y = y2;
-        *out_z = z2;
-        return;
-    }
-    if (fabs(v1 - v2) < 0.00001f) {
-        *out_x = x1;
-        *out_y = y1;
-        *out_z = z1;
-        return;
-    }
-
-    f32 mu = (isovalue - v1) / (v2 - v1);
-    *out_x = x1 + mu * (x2 - x1);
-    *out_y = y1 + mu * (y2 - y1);
-    *out_z = z1 + mu * (z2 - z1);
-}
-
-PRIVATE f32 get_value(const f32* values, s32 x, s32 y, s32 z,
-                            s32 dimx, s32 dimy, s32 dimz) {
-    return values[z * (dimx * dimy) + y * dimx + x];
-}
-
-PRIVATE void process_cube(const f32* values,
-                        s32 x, s32 y, s32 z,
-                        s32 dimx, s32 dimy, s32 dimz,
-                        f32 isovalue,
-                        f32* vertices,
-                        s32* indices,
-                        s32* vertex_count,
-                        s32* index_count) {
+{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1} };
 
     f32 cube_values[8];
     cube_values[0] = get_value(values, x, y, z, dimx, dimy, dimz);
@@ -2142,7 +2421,7 @@ PRIVATE void process_cube(const f32* values,
     }
 }
 
-PUBLIC s32 march_cubes(const f32* values,
+s32 march_cubes(const f32* values,
                 s32 dimz, s32 dimy, s32 dimx,
                 f32 isovalue,
                 f32** out_vertices,      //  [z,y,x,z,y,x,...]
@@ -2187,43 +2466,22 @@ PUBLIC s32 march_cubes(const f32* values,
 }
 
 // nrrd
-
-
-#define MAX_LINE_LENGTH 1024
-#define MAX_HEADER_LINES 100
-
-typedef struct {
-    char type[32];
-    s32 dimension;
-    char space[32];
-    s32 sizes[16];
-    f32 space_directions[16][3];
-    char endian[16];
-    char encoding[32];
-    f32 space_origin[3];
-
-    size_t data_size;
-    void* data;
-
-    bool is_valid;
-} nrrd_t;
-
-PRIVATE bool parse_sizes(char* value, nrrd_t* nrrd) {
+int parse_sizes(char* value, nrrd* nrrd) {
     char* token = strtok(value, " ");
     s32 i = 0;
     while (token != NULL && i < nrrd->dimension) {
         nrrd->sizes[i] = atoi(token);
         if (nrrd->sizes[i] <= 0) {
             printf("Invalid size value: %s", token);
-            return false;
+            return 1;
         }
         token = strtok(NULL, " ");
         i++;
     }
-    return i == nrrd->dimension;
+    return (i == nrrd->dimension) ? 0 : 1;
 }
 
-PRIVATE bool parse_space_directions(char* value, nrrd_t* nrrd) {
+int parse_space_directions(char* value, nrrd* nrrd) {
     char* token = strtok(value, ") (");
     s32 i = 0;
     while (token != NULL && i < nrrd->dimension) {
@@ -2237,16 +2495,16 @@ PRIVATE bool parse_space_directions(char* value, nrrd_t* nrrd) {
                       &nrrd->space_directions[i][1],
                       &nrrd->space_directions[i][2]) != 3) {
                 printf("Invalid space direction: %s", token);
-                return false;
+                return 1;
             }
         }
         token = strtok(NULL, ") (");
         i++;
     }
-    return true;
+    return 0;
 }
 
-PRIVATE bool parse_space_origin(char* value, nrrd_t* nrrd) {
+int parse_space_origin(char* value, nrrd* nrrd) {
     value++; // Skip first '('
     value[strlen(value)-1] = '\0'; // Remove last ')'
 
@@ -2255,12 +2513,12 @@ PRIVATE bool parse_space_origin(char* value, nrrd_t* nrrd) {
                &nrrd->space_origin[1],
                &nrrd->space_origin[2]) != 3) {
         printf("Invalid space origin: %s", value);
-        return false;
+        return 1;
     }
-    return true;
+    return 0;
 }
 
-PRIVATE size_t get_type_size(const char* type) {
+size_t get_type_size(const char* type) {
     if (strcmp(type, "uint8") == 0 || strcmp(type, "uchar") == 0) return 1;
     if (strcmp(type, "uint16") == 0) return 2;
     if (strcmp(type, "uint32") == 0) return 4;
@@ -2269,28 +2527,28 @@ PRIVATE size_t get_type_size(const char* type) {
     return 0;
 }
 
-PRIVATE bool read_raw_data(FILE* fp, nrrd_t* nrrd) {
+int read_raw_data(FILE* fp, nrrd* nrrd) {
     size_t bytes_read = fread(nrrd->data, 1, nrrd->data_size, fp);
     if (bytes_read != nrrd->data_size) {
         printf("Failed to read data: expected %zu bytes, got %zu",
                 nrrd->data_size, bytes_read);
-        return false;
+        return 1;
     }
-    return true;
+    return 0;
 }
 
-PRIVATE bool read_gzip_data(FILE* fp, nrrd_t* nrrd) {
-  printf("reading compressed data is not supported yet for nrrd\n");
-  assert("false");
-  return false;
-  #if 0
+int read_gzip_data(FILE* fp, nrrd* nrrd) {
+    printf("reading compressed data is not supported yet for nrrd\n");
+    assert("false");
+    return 1;
+    #if 0
     z_stream strm = {0};
     unsigned char in[16384];
     size_t bytes_written = 0;
 
     if (inflateInit2(&strm,-MAX_WBITS) != Z_OK) {
         printf("Failed to initialize zlib");
-        return false;
+        return 1;
     }
 
     s32 ret;
@@ -2299,7 +2557,7 @@ PRIVATE bool read_gzip_data(FILE* fp, nrrd_t* nrrd) {
         if (ferror(fp)) {
             inflateEnd(&strm);
             printf("Error reading compressed data");
-            return false;
+            return 1;
         }
         if (strm.avail_in == 0) break;
         strm.next_in = in;
@@ -2312,7 +2570,7 @@ PRIVATE bool read_gzip_data(FILE* fp, nrrd_t* nrrd) {
             if (ret == Z_NEED_DICT || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR) {
                 inflateEnd(&strm);
                 printf("Decompression error: %s", strm.msg);
-                return false;
+                return 1;
             }
 
             bytes_written = nrrd->data_size - strm.avail_out;
@@ -2322,18 +2580,18 @@ PRIVATE bool read_gzip_data(FILE* fp, nrrd_t* nrrd) {
     } while (ret != Z_STREAM_END);
 
     inflateEnd(&strm);
-    return true;
-#endif
+    return 0;
+    #endif
 }
 
-PUBLIC nrrd_t* nrrd_read(const char* filename) {
+nrrd* nrrd_read(const char* filename) {
     FILE* fp = fopen(filename, "rb");
     if (!fp) {
         printf("could not open %s\n",filename);
         return NULL;
     }
 
-    nrrd_t* nrrd = calloc(1, sizeof(nrrd_t));
+    nrrd* nrrd = calloc(1, sizeof(nrrd));
     if (!nrrd) {
 
         printf("could not allocate ram for nrrd\n");
@@ -2467,7 +2725,7 @@ cleanup:
     return nrrd;
 }
 
-PUBLIC void nrrd_free(nrrd_t* nrrd) {
+void nrrd_free(nrrd* nrrd) {
     if (nrrd) {
         if (nrrd->data) free(nrrd->data);
         free(nrrd);
@@ -2476,8 +2734,7 @@ PUBLIC void nrrd_free(nrrd_t* nrrd) {
 
 // obj
 
-
-PUBLIC s32 read_obj(const char* filename,
+s32 read_obj(const char* filename,
             f32** vertices, s32** indices,
             s32* vertex_count, s32* index_count) {
     FILE* fp = fopen(filename, "r");
@@ -2553,7 +2810,7 @@ PUBLIC s32 read_obj(const char* filename,
     return 0;
 }
 
-PUBLIC s32 write_obj(const char* filename,
+s32 write_obj(const char* filename,
              const f32* vertices, const s32* indices,
              s32 vertex_count, s32 index_count) {
     FILE* fp = fopen(filename, "w");
@@ -2586,11 +2843,10 @@ PUBLIC s32 write_obj(const char* filename,
 
 // ply
 
-
 //TODO: most the ply files I come across use x y z order. should we swap the order here so they
 // end up in the data as z y x?
 
-PUBLIC s32 write_ply(const char *filename,
+s32 write_ply(const char *filename,
                     const f32 *vertices,
                     const f32 *normals, // can be NULL if no normals
                     const s32 *indices,
@@ -2651,7 +2907,7 @@ PUBLIC s32 write_ply(const char *filename,
   return 0;
 }
 
-PUBLIC s32 read_ply(const char *filename,
+s32 read_ply(const char *filename,
                           f32 **out_vertices,
                           f32 **out_normals,
                           s32 **out_indices,
@@ -2897,22 +3153,8 @@ PUBLIC s32 read_ply(const char *filename,
 
 // ppm
 
-
-// PPM format types
-typedef enum ppm_type {
-    P3,  // ASCII format
-    P6   // Binary format
-} ppm_type;
-
-typedef struct ppm_image {
-    u32 width;
-    u32 height;
-    u8 max_val;
-    u8* data;  // RGB data in row-major order
-} ppm_image;
-
-PUBLIC inline ppm_image* ppm_new(u32 width, u32 height) {
-    ppm_image* img = malloc(sizeof(ppm_image));
+ppm* ppm_new(u32 width, u32 height) {
+    ppm* img = malloc(sizeof(ppm));
     if (!img) {
         return NULL;
     }
@@ -2930,14 +3172,14 @@ PUBLIC inline ppm_image* ppm_new(u32 width, u32 height) {
     return img;
 }
 
-PUBLIC inline void ppm_free(ppm_image* img) {
+void ppm_free(ppm* img) {
     if (img) {
         free(img->data);
         free(img);
     }
 }
 
-PRIVATE void skip_whitespace_and_comments(FILE* fp) {
+void skip_whitespace_and_comments(FILE* fp) {
     int c;
     while ((c = fgetc(fp)) != EOF) {
         if (c == '#') {
@@ -2950,7 +3192,7 @@ PRIVATE void skip_whitespace_and_comments(FILE* fp) {
     }
 }
 
-PRIVATE bool read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val) {
+bool read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val) {
     char magic[3];
 
     if (fgets(magic, sizeof(magic), fp) == NULL) {
@@ -2982,7 +3224,7 @@ PRIVATE bool read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* 
     return true;
 }
 
-PUBLIC ppm_image* read_ppm(const char* filename) {
+ppm* read_ppm(const char* filename) {
     FILE* fp = fopen(filename, "rb");
     if (!fp) {
         return NULL;
@@ -2997,7 +3239,7 @@ PUBLIC ppm_image* read_ppm(const char* filename) {
         return NULL;
     }
 
-    ppm_image* img = ppm_new(width, height);
+    ppm* img = ppm_new(width, height);
     if (!img) {
         fclose(fp);
         return NULL;
@@ -3031,7 +3273,7 @@ PUBLIC ppm_image* read_ppm(const char* filename) {
     return img;
 }
 
-PUBLIC int write_ppm(const char* filename, const ppm_image* img, ppm_type type) {
+int write_ppm(const char* filename, const ppm* img, ppm_type type) {
     if (!img || !img->data) {
         return 1;
     }
@@ -3066,7 +3308,7 @@ PUBLIC int write_ppm(const char* filename, const ppm_image* img, ppm_type type) 
     return 0;
 }
 
-PRIVATE void ppm_set_pixel(ppm_image* img, u32 x, u32 y, u8 r, u8 g, u8 b) {
+void ppm_set_pixel(ppm* img, u32 x, u32 y, u8 r, u8 g, u8 b) {
     if (!img || x >= img->width || y >= img->height) {
         return;
     }
@@ -3077,7 +3319,7 @@ PRIVATE void ppm_set_pixel(ppm_image* img, u32 x, u32 y, u8 r, u8 g, u8 b) {
     img->data[idx + 2] = b;
 }
 
-PRIVATE void ppm_get_pixel(const ppm_image* img, u32 x, u32 y, u8* r, u8* g, u8* b) {
+void ppm_get_pixel(const ppm* img, u32 x, u32 y, u8* r, u8* g, u8* b) {
     if (!img || x >= img->width || y >= img->height) {
         *r = *g = *b = 0;
         return;
@@ -3090,68 +3332,7 @@ PRIVATE void ppm_get_pixel(const ppm_image* img, u32 x, u32 y, u8* r, u8* g, u8*
 }
 
 // tiff
-
-
-#define TIFFTAG_SUBFILETYPE 254
-#define TIFFTAG_IMAGEWIDTH 256
-#define TIFFTAG_IMAGELENGTH 257
-#define TIFFTAG_BITSPERSAMPLE 258
-#define TIFFTAG_COMPRESSION 259
-#define TIFFTAG_PHOTOMETRIC 262
-#define TIFFTAG_IMAGEDESCRIPTION 270
-#define TIFFTAG_SOFTWARE 305
-#define TIFFTAG_DATETIME 306
-#define TIFFTAG_SAMPLESPERPIXEL 277
-#define TIFFTAG_ROWSPERSTRIP 278
-#define TIFFTAG_PLANARCONFIG 284
-#define TIFFTAG_RESOLUTIONUNIT 296
-#define TIFFTAG_XRESOLUTION 282
-#define TIFFTAG_YRESOLUTION 283
-#define TIFFTAG_SAMPLEFORMAT 339
-#define TIFFTAG_STRIPOFFSETS 273
-#define TIFFTAG_STRIPBYTECOUNTS 279
-
-#define TIFF_BYTE 1
-#define TIFF_ASCII 2
-#define TIFF_SHORT 3
-#define TIFF_LONG 4
-#define TIFF_RATIONAL 5
-
-typedef struct {
-    uint32_t offset;
-    uint32_t byteCount;
-} StripInfo;
-
-typedef struct {
-    uint32_t width;
-    uint32_t height;
-    uint16_t bitsPerSample;
-    uint16_t compression;
-    uint16_t photometric;
-    uint16_t samplesPerPixel;
-    uint32_t rowsPerStrip;
-    uint16_t planarConfig;
-    uint16_t sampleFormat;
-    StripInfo stripInfo;
-    char imageDescription[256];
-    char software[256];
-    char dateTime[20];
-    float xResolution;
-    float yResolution;
-    uint16_t resolutionUnit;
-    uint32_t subfileType;
-} DirectoryInfo;
-
-typedef struct {
-    DirectoryInfo* directories;
-    uint16_t depth;
-    size_t dataSize;
-    void* data;
-    bool isValid;
-    char errorMsg[256];
-} TiffImage;
-
-PRIVATE uint32_t readBytes(FILE* fp, int count, int littleEndian) {
+uint32_t readBytes(FILE* fp, int count, int littleEndian) {
     uint32_t value = 0;
     uint8_t byte;
 
@@ -3170,7 +3351,7 @@ PRIVATE uint32_t readBytes(FILE* fp, int count, int littleEndian) {
     return value;
 }
 
-PRIVATE void readString(FILE* fp, char* str, uint32_t offset, uint32_t count, long currentPos) {
+void readString(FILE* fp, char* str, uint32_t offset, uint32_t count, long currentPos) {
     long savedPos = ftell(fp);
     fseek(fp, offset, SEEK_SET);
     fread(str, 1, count - 1, fp);
@@ -3178,7 +3359,7 @@ PRIVATE void readString(FILE* fp, char* str, uint32_t offset, uint32_t count, lo
     fseek(fp, savedPos, SEEK_SET);
 }
 
-PRIVATE float readRational(FILE* fp, uint32_t offset, int littleEndian, long currentPos) {
+float readRational(FILE* fp, uint32_t offset, int littleEndian, long currentPos) {
     long savedPos = ftell(fp);
     fseek(fp, offset, SEEK_SET);
     uint32_t numerator = readBytes(fp, 4, littleEndian);
@@ -3187,7 +3368,7 @@ PRIVATE float readRational(FILE* fp, uint32_t offset, int littleEndian, long cur
     return denominator ? (float)numerator / denominator : 0.0f;
 }
 
-PRIVATE void readIFDEntry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart) {
+void readIFDEntry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart) {
     uint16_t tag = readBytes(fp, 2, littleEndian);
     uint16_t type = readBytes(fp, 2, littleEndian);
     uint32_t count = readBytes(fp, 4, littleEndian);
@@ -3253,7 +3434,7 @@ PRIVATE void readIFDEntry(FILE* fp, DirectoryInfo* dir, int littleEndian, long i
     }
 }
 
-PRIVATE bool validateDirectory(DirectoryInfo* dir, TiffImage* img) {
+bool validateDirectory(DirectoryInfo* dir, TiffImage* img) {
     if (dir->width == 0 || dir->height == 0) {
         snprintf(img->errorMsg, sizeof(img->errorMsg), "Invalid dimensions");
         return false;
@@ -3292,7 +3473,7 @@ PRIVATE bool validateDirectory(DirectoryInfo* dir, TiffImage* img) {
     return true;
 }
 
-PUBLIC TiffImage* readTIFF(const char* filename) {
+TiffImage* readTIFF(const char* filename) {
     FILE* fp = fopen(filename, "rb");
     if (!fp) return NULL;
 
@@ -3402,7 +3583,7 @@ PUBLIC TiffImage* readTIFF(const char* filename) {
     return img;
 }
 
-PUBLIC void freeTIFF(TiffImage* img) {
+void freeTIFF(TiffImage* img) {
     if (img) {
         free(img->directories);
         free(img->data);
@@ -3410,7 +3591,7 @@ PUBLIC void freeTIFF(TiffImage* img) {
     }
 }
 
-PRIVATE const char* getCompressionName(uint16_t compression) {
+const char* getCompressionName(uint16_t compression) {
     switch (compression) {
         case 1: return "None";
         case 2: return "CCITT modified Huffman RLE";
@@ -3425,7 +3606,7 @@ PRIVATE const char* getCompressionName(uint16_t compression) {
     }
 }
 
-PRIVATE const char* getPhotometricName(uint16_t photometric) {
+const char* getPhotometricName(uint16_t photometric) {
     switch (photometric) {
         case 0: return "min-is-white";
         case 1: return "min-is-black";
@@ -3439,7 +3620,7 @@ PRIVATE const char* getPhotometricName(uint16_t photometric) {
     }
 }
 
-PRIVATE const char* getPlanarConfigName(uint16_t config) {
+const char* getPlanarConfigName(uint16_t config) {
     switch (config) {
         case 1: return "single image plane";
         case 2: return "separate image planes";
@@ -3447,7 +3628,7 @@ PRIVATE const char* getPlanarConfigName(uint16_t config) {
     }
 }
 
-PRIVATE const char* getSampleFormatName(uint16_t format) {
+const char* getSampleFormatName(uint16_t format) {
     switch (format) {
         case 1: return "unsigned integer";
         case 2: return "signed integer";
@@ -3457,7 +3638,7 @@ PRIVATE const char* getSampleFormatName(uint16_t format) {
     }
 }
 
-PRIVATE const char* getResolutionUnitName(uint16_t unit) {
+const char* getResolutionUnitName(uint16_t unit) {
     switch (unit) {
         case 1: return "unitless";
         case 2: return "inches";
@@ -3466,7 +3647,7 @@ PRIVATE const char* getResolutionUnitName(uint16_t unit) {
     }
 }
 
-PUBLIC void printTIFFTags(const TiffImage* img, int directory) {
+void printTIFFTags(const TiffImage* img, int directory) {
     if (!img || !img->directories || directory >= img->depth) return;
 
     const DirectoryInfo* dir = &img->directories[directory];
@@ -3509,7 +3690,7 @@ PUBLIC void printTIFFTags(const TiffImage* img, int directory) {
     }
 }
 
-PUBLIC void printAllTIFFTags(const TiffImage* img) {
+void printAllTIFFTags(const TiffImage* img) {
     if (!img) {
         printf("Error: NULL TIFF image\n");
         return;
@@ -3526,7 +3707,7 @@ PUBLIC void printAllTIFFTags(const TiffImage* img) {
 }
 
 
-PRIVATE size_t getTIFFDirectorySize(const TiffImage* img, int directory) {
+size_t getTIFFDirectorySize(const TiffImage* img, int directory) {
     if (!img || !img->isValid || !img->directories || directory >= img->depth) {
         return 0;
     }
@@ -3535,7 +3716,7 @@ PRIVATE size_t getTIFFDirectorySize(const TiffImage* img, int directory) {
     return dir->width * dir->height * (dir->bitsPerSample / 8);
 }
 
-PRIVATE void* readTIFFDirectoryData(const TiffImage* img, int directory) {
+void* readTIFFDirectoryData(const TiffImage* img, int directory) {
 
     size_t bufferSize = getTIFFDirectorySize(img, directory);
     void* buffer = malloc(bufferSize);
@@ -3557,16 +3738,16 @@ PRIVATE void* readTIFFDirectoryData(const TiffImage* img, int directory) {
     return buffer;
 }
 
-PRIVATE uint16_t getTIFFPixel16FromBuffer(const uint16_t* buffer, int y, int x, int width) {
+uint16_t getTIFFPixel16FromBuffer(const uint16_t* buffer, int y, int x, int width) {
     return buffer[ y * width + x];
 }
 
-PRIVATE uint8_t getTIFFPixel8FromBuffer(const uint8_t* buffer, int y, int x, int width) {
+uint8_t getTIFFPixel8FromBuffer(const uint8_t* buffer, int y, int x, int width) {
     return buffer[y * width + x];
 }
 
 
-PRIVATE void writeBytes(FILE* fp, uint32_t value, int count, int littleEndian) {
+void writeBytes(FILE* fp, uint32_t value, int count, int littleEndian) {
     if (littleEndian) {
         for (int i = 0; i < count; i++) {
             uint8_t byte = (value >> (i * 8)) & 0xFF;
@@ -3580,13 +3761,13 @@ PRIVATE void writeBytes(FILE* fp, uint32_t value, int count, int littleEndian) {
     }
 }
 
-PRIVATE void writeString(FILE* fp, const char* str, uint32_t offset) {
+void writeString(FILE* fp, const char* str, uint32_t offset) {
     fseek(fp, offset, SEEK_SET);
     size_t len = strlen(str);
     fwrite(str, 1, len + 1, fp);  // Include null terminator
 }
 
-PRIVATE void writeRational(FILE* fp, float value, uint32_t offset, int littleEndian) {
+void writeRational(FILE* fp, float value, uint32_t offset, int littleEndian) {
     fseek(fp, offset, SEEK_SET);
     uint32_t numerator = (uint32_t)(value * 1000);
     uint32_t denominator = 1000;
@@ -3594,7 +3775,7 @@ PRIVATE void writeRational(FILE* fp, float value, uint32_t offset, int littleEnd
     writeBytes(fp, denominator, 4, littleEndian);
 }
 
-PRIVATE void getCurrentDateTime(char* dateTime) {
+void getCurrentDateTime(char* dateTime) {
     time_t now;
     struct tm* timeinfo;
     time(&now);
@@ -3602,7 +3783,7 @@ PRIVATE void getCurrentDateTime(char* dateTime) {
     strftime(dateTime, 20, "%Y:%m:%d %H:%M:%S", timeinfo);
 }
 
-PRIVATE uint32_t writeIFDEntry(FILE* fp, uint16_t tag, uint16_t type, uint32_t count,
+uint32_t writeIFDEntry(FILE* fp, uint16_t tag, uint16_t type, uint32_t count,
                              uint32_t value, int littleEndian) {
     writeBytes(fp, tag, 2, littleEndian);
     writeBytes(fp, type, 2, littleEndian);
@@ -3611,7 +3792,7 @@ PRIVATE uint32_t writeIFDEntry(FILE* fp, uint16_t tag, uint16_t type, uint32_t c
     return 12;  // Size of IFD entry
 }
 
-PUBLIC int writeTIFF(const char* filename, const TiffImage* img, bool littleEndian) {
+int writeTIFF(const char* filename, const TiffImage* img, bool littleEndian) {
     if (!img || !img->directories || !img->data || !img->isValid) return 1;
 
     FILE* fp = fopen(filename, "wb");
@@ -3706,7 +3887,7 @@ PUBLIC int writeTIFF(const char* filename, const TiffImage* img, bool littleEndi
     return 0;
 }
 
-PUBLIC TiffImage* createTIFF(uint32_t width, uint32_t height, uint16_t depth,
+TiffImage* createTIFF(uint32_t width, uint32_t height, uint16_t depth,
                            uint16_t bitsPerSample) {
     TiffImage* img = calloc(1, sizeof(TiffImage));
     if (!img) return NULL;
@@ -3753,7 +3934,7 @@ PUBLIC TiffImage* createTIFF(uint32_t width, uint32_t height, uint16_t depth,
         
 // vcps
 
-PRIVATE int read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count) {
+int read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count) {
     // Fast path: types match, direct read
     if (strcmp(src_type, dst_type) == 0) {
         size_t element_size = strcmp(src_type, "float") == 0 ? sizeof(f32) : sizeof(f64);
@@ -3793,7 +3974,7 @@ PRIVATE int read_binary_data(FILE* fp, void* out_data, const char* src_type, con
     return 1;
 }
 
-PRIVATE int write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count) {
+int write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count) {
     // Fast path: types match, direct write
     if (strcmp(src_type, dst_type) == 0) {
         size_t element_size = strcmp(src_type, "float") == 0 ? sizeof(f32) : sizeof(f64);
@@ -3832,7 +4013,7 @@ PRIVATE int write_binary_data(FILE* fp, const void* data, const char* src_type, 
 }
 
 
-PUBLIC int read_vcps(const char* filename,
+int read_vcps(const char* filename,
               size_t* width, size_t* height, size_t* dim,
               void* data, const char* dst_type) {
     if (!dst_type || (strcmp(dst_type, "float") != 0 && strcmp(dst_type, "double") != 0)) {
@@ -3898,7 +4079,7 @@ PUBLIC int read_vcps(const char* filename,
     return status;
 }
 
-PUBLIC int write_vcps(const char* filename,
+int write_vcps(const char* filename,
                size_t width, size_t height, size_t dim,
                const void* data, const char* src_type, const char* dst_type) {
     if (!src_type || !dst_type ||
@@ -3932,23 +4113,9 @@ PUBLIC int write_vcps(const char* filename,
     return status;
 }
 
-        
 // vol
-// A volume is an entire scroll
-//   - for Scroll 1 it is all 14376 x 7888 x 8096 voxels
-//   - the dtype is uint8 or uint16
-//
 
-typedef struct volume {
-  s32 dims[3];
-  bool is_zarr;
-  bool is_tif_stack;
-  bool uses_3d_tif;
-  char* cache_dir;
-  u64 vol_id;
-} volume;
-
-PUBLIC volume *volume_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool uses_3d_tif, char* cache_dir, u64 vol_id) {
+volume *volume_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool uses_3d_tif, char* cache_dir, u64 vol_id) {
   //only 3d tiff chunks are currently supported
   assert(is_tif_stack && uses_3d_tif);
 
@@ -3969,7 +4136,7 @@ PUBLIC volume *volume_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, b
   return ret;
 }
 
-PUBLIC chunk* volume_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]) {
+chunk* volume_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]) {
   // stitching across chunks, be them tiff or zarr chunks, isn't just yet supported
   // so for now we'll just force the position to be a multiple of 500
   // and for dims to be <= 500
@@ -3993,6 +4160,9 @@ PUBLIC chunk* volume_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_d
   printf("downloading data from %s\n",url);
 
   long len = download(url, &buf);
+  if (len < 0) {
+      // download failed
+  }
   printf("len %d\n",(s32)len);
   //todo: is this applicable for all of our 3d tiff files from the data server?
   if (len != 250073508 ) {
@@ -4020,26 +4190,9 @@ PUBLIC chunk* volume_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_d
         
 // zarr
 
-#if 0
-typedef struct zarr_compressor_settings {
-  int32_t blocksize;
-  int32_t clevel;
-  char cname[32];
-  char id[32];
-  int32_t shuffle;
-} zarr_compressor_settings;
+#ifdef VESUVIUS_ZARR_IMPL
 
-typedef struct zarr_metadata {
-  int32_t shape[3];
-  int32_t chunks[3];
-  zarr_compressor_settings compressor;
-  char dtype[8];
-  int32_t fill_value;
-  char order; // Single character 'C' or 'F'
-  int32_t zarr_format;
-} zarr_metadata;
-
-PRIVATE struct json_value_s *find_value(const struct json_object_s *obj, const char *key) {
+struct json_value_s *find_value(const struct json_object_s *obj, const char *key) {
   struct json_object_element_s *element = obj->start;
   while (element) {
     if (element->name->string_size == strlen(key) &&
@@ -4051,7 +4204,7 @@ PRIVATE struct json_value_s *find_value(const struct json_object_s *obj, const c
   return NULL;
 }
 
-PRIVATE void parse_int32_array(struct json_array_s *array, int32_t output[3]) {
+void parse_int32_array(struct json_array_s *array, int32_t output[3]) {
   struct json_array_element_s *element = array->start;
   for (int i = 0; i < 3 && element; i++) {
     struct json_number_s *num = element->value->payload;
@@ -4060,7 +4213,7 @@ PRIVATE void parse_int32_array(struct json_array_s *array, int32_t output[3]) {
   }
 }
 
-PRIVATE int parse_zarr_metadata(const char *json_string, zarr_metadata *metadata) {
+int parse_zarr_metadata(const char *json_string, zarr_metadata *metadata) {
   struct json_value_s *root = json_parse(json_string, strlen(json_string));
   if (!root) {
     printf("Failed to parse JSON!\n");
@@ -4142,7 +4295,7 @@ PRIVATE int parse_zarr_metadata(const char *json_string, zarr_metadata *metadata
   return 1;
 }
 
-PUBLIC zarr_metadata parse_zarray(char *path) {
+zarr_metadata parse_zarray(char *path) {
   zarr_metadata metadata = {0};
 
   FILE *fp = fopen(path, "rt");
@@ -4181,5 +4334,115 @@ PUBLIC zarr_metadata parse_zarray(char *path) {
 }
 #endif
 
-        
+//vesuvius specific
+chunk *tiff_to_chunk(const char *tiffpath) {
+  TiffImage *img = readTIFF(tiffpath);
+  if (!img || !img->isValid) {
+    assert(false);
+    return NULL;
+  }
+  if (img->depth <= 1) {
+    printf("can't load a 2d tiff as a chunk");
+    assert(false);
+    return NULL;
+  }
+
+  //TODO: can we assume that all 3D tiffs have the same x,y dimensions for all slices? because we are right here
+  s32 dims[3] = {img->depth, img->directories[0].height, img->directories[0].width};
+  chunk *ret = chunk_new(dims);
+  for (s32 z = 0; z < dims[0]; z++) {
+    void *buf = readTIFFDirectoryData(img, z);
+    for (s32 y = 0; y < dims[1]; y++) {
+      for (s32 x = 0; x < dims[2]; x++) {
+        if (img->directories[z].bitsPerSample == 8) {
+          ret->data[z * dims[1] * dims[2] + y * dims[2] + x] = getTIFFPixel8FromBuffer(
+            buf, y, x, img->directories[z].width);
+        } else if (img->directories[z].bitsPerSample == 16) {
+          ret->data[z * dims[1] * dims[2] + y * dims[2] + x] = getTIFFPixel16FromBuffer(
+            buf, y, x, img->directories[z].width);
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+
+slice *tiff_to_slice(const char *tiffpath, int index) {
+  TiffImage *img = readTIFF(tiffpath);
+  if (!img || !img->isValid) {
+    assert(false);
+    return NULL;
+  }
+  if (index < 0 || index >= img->depth) {
+    assert(false);
+    return NULL;
+  }
+
+  s32 dims[2] = {img->directories[0].height, img->directories[0].width};
+  slice *ret = slice_new(dims);
+
+  void *buf = readTIFFDirectoryData(img, index);
+  for (s32 y = 0; y < dims[0]; y++) {
+    for (s32 x = 0; x < dims[1]; x++) {
+      if (img->directories[index].bitsPerSample == 8) {
+        ret->data[y * dims[1] + x] = getTIFFPixel8FromBuffer(buf, y, x, img->directories[index].width);
+      } else if (img->directories[index].bitsPerSample == 16) {
+        ret->data[y * dims[1] + x] = getTIFFPixel16FromBuffer(buf, y, x, img->directories[index].width);
+      }
+    }
+  }
+  return ret;
+}
+
+
+
+int slice_fill(slice *slice, volume *vol, int start[static 2], int axis) {
+  assert(axis == 'z' || axis == 'y' || axis == 'x');
+  if (start[0] + slice->dims[0] < 0 || start[0] + slice->dims[0] > vol->dims[0]) {
+    assert(false);
+    return 1;
+  }
+  if (start[1] + slice->dims[1] < 0 || start[1] + slice->dims[1] > vol->dims[1]) {
+    assert(false);
+    return 1;
+  }
+
+  for (int y = 0; y < vol->dims[0]; y++) {
+    for (int x = 0; x < vol->dims[1]; x++) {
+      //TODO: actually get the data
+      slice->data[y * slice->dims[1] + x] = 0.0f;
+    }
+  }
+  return 0;
+}
+
+int chunk_fill(chunk *chunk, volume *vol, int start[static 3]) {
+  if (start[0] + chunk->dims[0] < 0 || start[0] + chunk->dims[0] > vol->dims[0]) {
+    assert(false);
+    return 1;
+  }
+  if (start[1] + chunk->dims[1] < 0 || start[1] + chunk->dims[1] > vol->dims[1]) {
+    assert(false);
+    return 1;
+  }
+  if (start[2] + chunk->dims[2] < 0 || start[2] + chunk->dims[2] > vol->dims[2]) {
+    assert(false);
+    return 1;
+  }
+
+  for (int z = 0; z < vol->dims[0]; z++) {
+    for (int y = 0; y < vol->dims[1]; y++) {
+      for (int x = 0; x < vol->dims[2]; x++) {
+        //TODO: actually get the data
+        chunk->data[z * chunk->dims[1] * chunk->dims[2] + y * chunk->dims[2] + x] = 0.0f;
+      }
+    }
+  }
+  return 0;
+}
+
+
+
+#endif // defined(VESUVIUS_IMPL)
 #endif // VESUVIUS_H
