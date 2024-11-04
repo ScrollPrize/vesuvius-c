@@ -1,4 +1,6 @@
-#include "volcano.h"
+#define VESUVIUS_IMPL
+
+#include "vesuvius-c.h"
 
 int main(int argc, char** argv) {
   //Scroll 1 20230205180739
