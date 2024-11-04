@@ -1,6 +1,7 @@
 #ifndef VESUVIUS_H
 #define VESUVIUS_H
 
+#if 0
 
 #include <ctype.h>
 #include <limits.h>
@@ -821,9 +822,10 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
     }
 }
 
+#endif // if 0
 
 //vesuvius notes:
-// - when passing pointers to a _new function in order to fill out fields in the struct (e.g. mesh_new)
+// - when passing pointers to a _new function in order to fill out fields in the struct (e.g. vs_mesh_new)
 //   the struct will take ownership of the pointer and the pointer shall be cleaned up in the _free function.
 //   The caller loses ownership of the pointer
 // - index order is in Z Y X order
@@ -1044,67 +1046,67 @@ typedef struct zarr_metadata {
 
 #ifndef VESUVIUS_IMPL
 // utils
-void trim(char* str);
-void skip_line(FILE *fp);
-bool str_starts_with(const char* str, const char* prefix);
-int mkdir_p(const char* path);
+void vs__trim(char* str);
+void vs__skip_line(FILE *fp);
+bool vs__str_starts_with(const char* str, const char* prefix);
+int vs__mkdir_p(const char* path);
 
 // chamfer
-f32 squared_distance(const f32* p1, const f32* p2);
-f32 min_distance_to_set(const f32* point, const f32* point_set, s32 set_size);
-f32 chamfer_distance(const f32* set1, s32 size1, const f32* set2, s32 size2);
+f32 vs__squared_distance(const f32* p1, const f32* p2);
+f32 vs__min_distance_to_set(const f32* point, const f32* point_set, s32 set_size);
+f32 vs_chamfer_distance(const f32* set1, s32 size1, const f32* set2, s32 size2);
 
 // curl
-size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp);
-long download(const char* url, void** out_buffer);
+size_t vs__write_callback(void *contents, size_t size, size_t nmemb, void *userp);
+long vs_download(const char* url, void** out_buffer);
 
 // histogram
-histogram *histogram_new(s32 num_bins, f32 min_value, f32 max_value);
-void histogram_free(histogram *hist);
-s32 get_bin_index(const histogram* hist, f32 value);
-histogram* slice_histogram(const f32* data, s32 dimy, s32 dimx, s32 num_bins);
-histogram* chunk_histogram(const f32* data, s32 dimz, s32 dimy, s32 dimx, s32 num_bins);
-f32 get_slice_value(const f32* data, s32 y, s32 x, s32 dimx);
-f32 get_chunk_value(const f32* data, s32 z, s32 y, s32 x, s32 dimy, s32 dimx);
-s32 write_histogram_to_csv(const histogram *hist, const char *filename);
-hist_stats calculate_histogram_stats(const histogram *hist);
+histogram *vs_histogram_new(s32 num_bins, f32 min_value, f32 max_value);
+void vs_histogram_free(histogram *hist);
+s32 vs__get_bin_index(const histogram* hist, f32 value);
+histogram* vs_slice_histogram(const f32* data, s32 dimy, s32 dimx, s32 num_bins);
+histogram* vs_chunk_histogram(const f32* data, s32 dimz, s32 dimy, s32 dimx, s32 num_bins);
+f32 vs__get_slice_value(const f32* data, s32 y, s32 x, s32 dimx);
+f32 vs__get_chunk_value(const f32* data, s32 z, s32 y, s32 x, s32 dimy, s32 dimx);
+s32 vs_write_histogram_to_csv(const histogram *hist, const char *filename);
+hist_stats vs_calculate_histogram_stats(const histogram *hist);
 
 // math
-float maxfloat(float a, float b);
-float minfloat(float a, float b);
-float avgfloat(float *data, int len);
-chunk *chunk_new(int dims[static 3]);
-void chunk_free(chunk *chunk);
-slice *slice_new(int dims[static 2]);
-void slice_free(slice *slice);
-f32 slice_get(slice *slice, s32 y, s32 x);
-void slice_set(slice *slice, s32 y, s32 x, f32 data);
-f32 chunk_get(chunk *chunk, s32 z, s32 y, s32 x);
-void chunk_set(chunk *chunk, s32 z, s32 y, s32 x, f32 data);
-chunk* maxpool(chunk* inchunk, s32 kernel, s32 stride);
-chunk *avgpool(chunk *inchunk, s32 kernel, s32 stride);
-chunk *sumpool(chunk *inchunk, s32 kernel, s32 stride);
-chunk *create_box_kernel(s32 size);
-chunk* convolve3d(chunk* input, chunk* kernel);
-chunk* unsharp_mask_3d(chunk* input, float amount, s32 kernel_size);
-chunk* normalize_chunk(chunk* input);
-chunk* transpose(chunk* input, const char* current_layout);
+float vs__maxfloat(float a, float b);
+float vs__minfloat(float a, float b);
+float vs__avgfloat(float *data, int len);
+chunk *vs_chunk_new(int dims[static 3]);
+void vs_chunk_free(chunk *chunk);
+slice *vs_slice_new(int dims[static 2]);
+void vs_slice_free(slice *slice);
+f32 vs_slice_get(slice *slice, s32 y, s32 x);
+void vs_slice_set(slice *slice, s32 y, s32 x, f32 data);
+f32 vs_chunk_get(chunk *chunk, s32 z, s32 y, s32 x);
+void vs_chunk_set(chunk *chunk, s32 z, s32 y, s32 x, f32 data);
+chunk* vs_maxpool(chunk* inchunk, s32 kernel, s32 stride);
+chunk *vs_avgpool(chunk *inchunk, s32 kernel, s32 stride);
+chunk *vs_sumpool(chunk *inchunk, s32 kernel, s32 stride);
+chunk *vs__create_box_kernel(s32 size);
+chunk* vs__convolve3d(chunk* input, chunk* kernel);
+chunk* vs_unsharp_mask_3d(chunk* input, float amount, s32 kernel_size);
+chunk* vs_normalize_chunk(chunk* input);
+chunk* vs_transpose(chunk* input, const char* current_layout);
 
 // mesh
-mesh* mesh_new(f32 *vertices, f32 *normals, s32 *indices, s32 vertex_count, s32 index_count);
-void mesh_free(mesh *mesh);
-void mesh_get_bounds(const mesh *m,
+mesh* vs_mesh_new(f32 *vertices, f32 *normals, s32 *indices, s32 vertex_count, s32 index_count);
+void vs_mesh_free(mesh *mesh);
+void vs_mesh_get_bounds(const mesh *m,
                     f32 *origin_z, f32 *origin_y, f32 *origin_x,
                     f32 *length_z, f32 *length_y, f32 *length_x);
-void mesh_translate(mesh *m, f32 z, f32 y, f32 x);
-void mesh_scale(mesh *m, f32 scale_z, f32 scale_y, f32 scale_x);
-void interpolate_vertex(f32 isovalue,
+void vs_mesh_translate(mesh *m, f32 z, f32 y, f32 x);
+void vs_mesh_scale(mesh *m, f32 scale_z, f32 scale_y, f32 scale_x);
+void vs__interpolate_vertex(f32 isovalue,
                                     f32 v1, f32 v2,
                                     f32 x1, f32 y1, f32 z1,
                                     f32 x2, f32 y2, f32 z2,
                                     f32* out_x, f32* out_y, f32* out_z);
-f32 get_value(const f32* values, s32 x, s32 y, s32 z, s32 dimx, s32 dimy, s32 dimz);
-void process_cube(const f32* values,
+f32 vs__get_value(const f32* values, s32 x, s32 y, s32 z, s32 dimx, s32 dimy, s32 dimz);
+void vs__process_cube(const f32* values,
                         s32 x, s32 y, s32 z,
                         s32 dimx, s32 dimy, s32 dimz,
                         f32 isovalue,
@@ -1112,7 +1114,7 @@ void process_cube(const f32* values,
                         s32* indices,
                         s32* vertex_count,
                         s32* index_count);
-s32 march_cubes(const f32* values,
+s32 vs_march_cubes(const f32* values,
                 s32 dimz, s32 dimy, s32 dimx,
                 f32 isovalue,
                 f32** out_vertices,      //  [z,y,x,z,y,x,...]
@@ -1121,31 +1123,31 @@ s32 march_cubes(const f32* values,
                 s32* out_index_count);
 
 // nrrd
-bool parse_sizes(char* value, nrrd* nrrd);
-bool parse_space_directions(char* value, nrrd* nrrd);
-bool parse_space_origin(char* value, nrrd* nrrd);
-size_t get_type_size(const char* type);
-bool read_raw_data(FILE* fp, nrrd* nrrd);
-bool read_gzip_data(FILE* fp, nrrd* nrrd);
-nrrd* nrrd_read(const char* filename);
-void nrrd_free(nrrd* nrrd);
+bool vs__nrrd_parse_sizes(char* value, nrrd* nrrd);
+bool vs__nrrd_parse_space_directions(char* value, nrrd* nrrd);
+bool vs__nrrd_parse_space_origin(char* value, nrrd* nrrd);
+size_t vs__nrrd_get_type_size(const char* type);
+bool vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd);
+bool vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd);
+nrrd* vs__nrrd_read(const char* filename);
+void vs__nrrd_free(nrrd* nrrd);
 
 // obj
-s32 read_obj(const char* filename,
+s32 vs_read_obj(const char* filename,
             f32** vertices, s32** indices,
             s32* vertex_count, s32* index_count);
-s32 write_obj(const char* filename,
+s32 vs_write_obj(const char* filename,
              const f32* vertices, const s32* indices,
              s32 vertex_count, s32 index_count);
 
 // ply
-s32 write_ply(const char *filename,
+s32 vs_write_ply(const char *filename,
                     const f32 *vertices,
                     const f32 *normals, // can be NULL if no normals
                     const s32 *indices,
                     s32 vertex_count,
                     s32 index_count);
-s32 read_ply(const char *filename,
+s32 vs_read_ply(const char *filename,
                           f32 **out_vertices,
                           f32 **out_normals,
                           s32 **out_indices,
@@ -1154,73 +1156,73 @@ s32 read_ply(const char *filename,
                           s32 *out_index_count);
 
 //ppm
-ppm* ppm_new(u32 width, u32 height);
-inline void ppm_free(ppm* img);
-void skip_whitespace_and_comments(FILE* fp);
-bool read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val);
-ppm* read_ppm(const char* filename);
-int write_ppm(const char* filename, const ppm* img, ppm_type type);
-void ppm_set_pixel(ppm* img, u32 x, u32 y, u8 r, u8 g, u8 b);
-void ppm_get_pixel(const ppm* img, u32 x, u32 y, u8* r, u8* g, u8* b);
+ppm* vs_ppm_new(u32 width, u32 height);
+inline void vs_ppm_free(ppm* img);
+void vs__skip_whitespace_and_comments(FILE* fp);
+bool vs__ppm_read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val);
+ppm* vs_read_ppm(const char* filename);
+int vs_write_ppm(const char* filename, const ppm* img, ppm_type type);
+void vs_ppm_set_pixel(ppm* img, u32 x, u32 y, u8 r, u8 g, u8 b);
+void vs_ppm_get_pixel(const ppm* img, u32 x, u32 y, u8* r, u8* g, u8* b);
 
 //tiff
-uint32_t readBytes(FILE* fp, int count, int littleEndian);
-void readString(FILE* fp, char* str, uint32_t offset, uint32_t count, long currentPos);
-float readRational(FILE* fp, uint32_t offset, int littleEndian, long currentPos);
-void readIFDEntry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart);
-bool validateDirectory(DirectoryInfo* dir, TiffImage* img);
-TiffImage* readTIFF(const char* filename);
-void freeTIFF(TiffImage* img);
-const char* getCompressionName(uint16_t compression);
-const char* getPhotometricName(uint16_t photometric);
-const char* getPlanarConfigName(uint16_t config);
-const char* getSampleFormatName(uint16_t format);
-const char* getResolutionUnitName(uint16_t unit);
-void printTIFFTags(const TiffImage* img, int directory);
-void printAllTIFFTags(const TiffImage* img);
-size_t getTIFFDirectorySize(const TiffImage* img, int directory);
-void* readTIFFDirectoryData(const TiffImage* img, int directory);
-uint16_t getTIFFPixel16FromBuffer(const uint16_t* buffer, int y, int x, int width);
-uint8_t getTIFFPixel8FromBuffer(const uint8_t* buffer, int y, int x, int width);
-void writeBytes(FILE* fp, uint32_t value, int count, int littleEndian);
-void writeString(FILE* fp, const char* str, uint32_t offset);
-void writeRational(FILE* fp, float value, uint32_t offset, int littleEndian);
-void getCurrentDateTime(char* dateTime);
-uint32_t writeIFDEntry(FILE* fp, uint16_t tag, uint16_t type, uint32_t count, uint32_t value, int littleEndian);
-int writeTIFF(const char* filename, const TiffImage* img, bool littleEndian);
-TiffImage* createTIFF(uint32_t width, uint32_t height, uint16_t depth, uint16_t bitsPerSample);
+uint32_t vs__tiff_read_bytes(FILE* fp, int count, int littleEndian);
+void vs__tiff_read_string(FILE* fp, char* str, uint32_t offset, uint32_t count, long currentPos);
+float vs__tiff_read_rational(FILE* fp, uint32_t offset, int littleEndian, long currentPos);
+void vs__tiff_read_ifd_entry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart);
+bool vs__tiff_validate_directory(DirectoryInfo* dir, TiffImage* img);
+TiffImage* vs_tiff_read(const char* filename);
+void vs_tiff_free(TiffImage* img);
+const char* vs_tiff_compression_name(uint16_t compression);
+const char* vs_tiff_photometric_name(uint16_t photometric);
+const char* vs_tiff_planar_config_name(uint16_t config);
+const char* vs_tiff_sample_format_name(uint16_t format);
+const char* vs_tiff_resolution_unit_name(uint16_t unit);
+void vs_tiff_print_tags(const TiffImage* img, int directory);
+void vs_tiff_print_all_tags(const TiffImage* img);
+size_t vs_tiff_directory_size(const TiffImage* img, int directory);
+void* vs_tiff_read_directory_data(const TiffImage* img, int directory);
+uint16_t vs_tiff_pixel16(const uint16_t* buffer, int y, int x, int width);
+uint8_t vs_tiff_pixel8(const uint8_t* buffer, int y, int x, int width);
+void vs__tiff_write_bytes(FILE* fp, uint32_t value, int count, int littleEndian);
+void vs__tiff_write_string(FILE* fp, const char* str, uint32_t offset);
+void vs__tiff_write_rational(FILE* fp, float value, uint32_t offset, int littleEndian);
+void vs__tiff_current_date_time(char* dateTime);
+uint32_t vs__tiff_write_ifd_entry(FILE* fp, uint16_t tag, uint16_t type, uint32_t count, uint32_t value, int littleEndian);
+int vs_write_tiff(const char* filename, const TiffImage* img, bool littleEndian);
+TiffImage* vs_create_tiff(uint32_t width, uint32_t height, uint16_t depth, uint16_t bitsPerSample);
 
 // vcps
-int read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count);
-int write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count);
-int read_vcps(const char* filename,
+int vs__vcps_read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count);
+int vs__vcps_write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count);
+int vs_vcps_read(const char* filename,
               size_t* width, size_t* height, size_t* dim,
               void* data, const char* dst_type);
-int write_vcps(const char* filename,
+int vs_vcps_write(const char* filename,
                size_t width, size_t height, size_t dim,
                const void* data, const char* src_type, const char* dst_type);
 
 // volume
-volume *volume_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool uses_3d_tif, char* cache_dir, u64 vol_id);
-chunk* volume_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]);
+volume *vs_vol_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool uses_3d_tif, char* cache_dir, u64 vol_id);
+chunk* vs_vol_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]);
 
 // zarr
 #ifdef VESUVIUS_ZARR_IMPL
-struct json_value_s *find_value(const struct json_object_s *obj, const char *key);
-void parse_int32_array(struct json_array_s *array, int32_t output[3]);
-int parse_zarr_metadata(const char *json_string, zarr_metadata *metadata);
-zarr_metadata parse_zarray(char *path);
+struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key);
+void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]);
+int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metadata);
+zarr_metadata vs_zarr_parse_zarray(char *path);
 #endif
 
 // vesuvius specific
-chunk *tiff_to_chunk(const char *tiffpath);
-slice *tiff_to_slice(const char *tiffpath, int index);
-int slice_fill(slice *slice, volume *vol, int start[static 2], int axis);
-int chunk_fill(chunk *chunk, volume *vol, int start[static 3]);
+chunk *vs_tiff_to_chunk(const char *tiffpath);
+slice *vs_tiff_to_slice(const char *tiffpath, int index);
+int vs_slice_fill(slice *slice, volume *vol, int start[static 2], int axis);
+int vs_chunk_fill(chunk *chunk, volume *vol, int start[static 3]);
 
 #else //ifdef VESUVIUS_IMPL
 
-void trim(char* str) {
+void vs__trim(char* str) {
   char* end;
   while(isspace(*str)) str++;
   if(*str == 0) return;
@@ -1229,16 +1231,11 @@ void trim(char* str) {
   end[1] = '\0';
 }
 
-void skip_line(FILE *fp) {
-  char buffer[1024];
-  fgets(buffer, sizeof(buffer), fp);
-}
-
-bool str_starts_with(const char* str, const char* prefix) {
+bool vs__str_starts_with(const char* str, const char* prefix) {
   return strncmp(str, prefix, strlen(prefix)) == 0;
 }
 
-int mkdir_p(const char* path) {
+int vs__mkdir_p(const char* path) {
   char tmp[1024];
   char* p = NULL;
   size_t len;
@@ -1270,7 +1267,7 @@ int mkdir_p(const char* path) {
 
 // chamfer
 
-f32 squared_distance(const f32* p1, const f32* p2) {
+f32 vs__squared_distance(const f32* p1, const f32* p2) {
   f32 dz = p1[0] - p2[0];
   f32 dy = p1[1] - p2[1];
   f32 dx = p1[2] - p2[2];
@@ -1278,11 +1275,11 @@ f32 squared_distance(const f32* p1, const f32* p2) {
 }
 
 
-f32 min_distance_to_set(const f32* point, const f32* point_set, s32 set_size) {
+f32 vs__min_distance_to_set(const f32* point, const f32* point_set, s32 set_size) {
   f32 min_dist = FLT_MAX;
 
   for (s32 i = 0; i < set_size; i++) {
-    f32 dist = squared_distance(point, &point_set[i * 3]);
+    f32 dist = vs__squared_distance(point, &point_set[i * 3]);
     if (dist < min_dist) {
       min_dist = dist;
     }
@@ -1290,16 +1287,16 @@ f32 min_distance_to_set(const f32* point, const f32* point_set, s32 set_size) {
   return min_dist;
 }
 
-f32 chamfer_distance(const f32* set1, s32 size1, const f32* set2, s32 size2) {
+f32 vs_chamfer_distance(const f32* set1, s32 size1, const f32* set2, s32 size2) {
   f32 sum1 = 0.0f;
   f32 sum2 = 0.0f;
 
   for (s32 i = 0; i < size1; i++) {
-    sum1 += min_distance_to_set(&set1[i * 3], set2, size2);
+    sum1 += vs__min_distance_to_set(&set1[i * 3], set2, size2);
   }
 
   for (s32 i = 0; i < size2; i++) {
-    sum2 += min_distance_to_set(&set2[i * 3], set1, size1);
+    sum2 += vs__min_distance_to_set(&set2[i * 3], set1, size1);
   }
 
   return sqrtf((sum1 / size1 + sum2 / size2) / 2.0f);
@@ -1307,7 +1304,7 @@ f32 chamfer_distance(const f32* set1, s32 size1, const f32* set2, s32 size2) {
 
 //curl
 #ifdef VESUVIUS_CURL_IMPL
-size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp) {
+size_t vs__write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     DownloadBuffer *mem = userp;
 
@@ -1324,7 +1321,7 @@ size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp) {
     return realsize;
 }
 
-long download(const char* url, void** out_buffer) {
+long vs_download(const char* url, void** out_buffer) {
     CURL* curl;
     CURLcode res;
     long http_code = 0;
@@ -1346,7 +1343,7 @@ long download(const char* url, void** out_buffer) {
     }
 
     curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, vs__write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
@@ -1377,14 +1374,14 @@ long download(const char* url, void** out_buffer) {
     return chunk.size;
 }
 #else
-long download(const char* url, void** out_buffer) {
+long vs_download(const char* url, void** out_buffer) {
     printf("curl support must be enabled to download files\n");
     return -1;
 }
 #endif
 
 // histogram
-histogram *histogram_new(s32 num_bins, f32 min_value, f32 max_value) {
+histogram *vs_histogram_new(s32 num_bins, f32 min_value, f32 max_value) {
   histogram *hist = malloc(sizeof(histogram));
   if (!hist) {
     return NULL;
@@ -1404,7 +1401,7 @@ histogram *histogram_new(s32 num_bins, f32 min_value, f32 max_value) {
   return hist;
 }
 
-void histogram_free(histogram *hist) {
+void vs_histogram_free(histogram *hist) {
   if (hist) {
     free(hist->bins);
     free(hist);
@@ -1412,7 +1409,7 @@ void histogram_free(histogram *hist) {
 }
 
 
-s32 get_bin_index(const histogram* hist, f32 value) {
+s32 vs__get_bin_index(const histogram* hist, f32 value) {
     if (value <= hist->min_value) return 0;
     if (value >= hist->max_value) return hist->num_bins - 1;
 
@@ -1421,7 +1418,7 @@ s32 get_bin_index(const histogram* hist, f32 value) {
     return bin;
 }
 
-histogram* slice_histogram(const f32* data,
+histogram* vs_slice_histogram(const f32* data,
                                       s32 dimy, s32 dimx,
                                       s32 num_bins) {
     if (!data || num_bins <= 0) {
@@ -1438,20 +1435,20 @@ histogram* slice_histogram(const f32* data,
         if (val > max_val) max_val = val;
     }
 
-    histogram* hist = histogram_new(num_bins, min_val, max_val);
+    histogram* hist = vs_histogram_new(num_bins, min_val, max_val);
     if (!hist) {
         return NULL;
     }
 
     for (s32 i = 0; i < total_pixels; i++) {
-        s32 bin = get_bin_index(hist, data[i]);
+        s32 bin = vs__get_bin_index(hist, data[i]);
         hist->bins[bin]++;
     }
 
     return hist;
 }
 
-histogram* chunk_histogram(const f32* data,
+histogram* vs_chunk_histogram(const f32* data,
                                       s32 dimz, s32 dimy, s32 dimx,
                                       s32 num_bins) {
     if (!data || num_bins <= 0) {
@@ -1468,28 +1465,28 @@ histogram* chunk_histogram(const f32* data,
         if (val > max_val) max_val = val;
     }
 
-    histogram* hist = histogram_new(num_bins, min_val, max_val);
+    histogram* hist = vs_histogram_new(num_bins, min_val, max_val);
     if (!hist) {
         return NULL;
     }
 
     for (s32 i = 0; i < total_voxels; i++) {
-        s32 bin = get_bin_index(hist, data[i]);
+        s32 bin = vs__get_bin_index(hist, data[i]);
         hist->bins[bin]++;
     }
 
     return hist;
 }
 
-f32 get_slice_value(const f32* data, s32 y, s32 x, s32 dimx) {
+f32 vs__get_slice_value(const f32* data, s32 y, s32 x, s32 dimx) {
     return data[y * dimx + x];
 }
 
-f32 get_chunk_value(const f32* data, s32 z, s32 y, s32 x,
+f32 vs__get_chunk_value(const f32* data, s32 z, s32 y, s32 x,
                                   s32 dimy, s32 dimx) {
     return data[z * (dimy * dimx) + y * dimx + x];
 }
-s32 write_histogram_to_csv(const histogram *hist, const char *filename) {
+s32 vs_write_histogram_to_csv(const histogram *hist, const char *filename) {
   FILE *fp = fopen(filename, "w");
   if (!fp) {
     return 1;
@@ -1507,7 +1504,7 @@ s32 write_histogram_to_csv(const histogram *hist, const char *filename) {
   return 0;
 }
 
-hist_stats calculate_histogram_stats(const histogram *hist) {
+hist_stats vs_calculate_histogram_stats(const histogram *hist) {
   hist_stats stats = {0};
 
   unsigned long long total_count = 0;
@@ -1563,15 +1560,15 @@ hist_stats calculate_histogram_stats(const histogram *hist) {
 //   - increasing X means looking farther right in a slice
 
 
-float maxfloat(float a, float b) { return a > b ? a : b; }
-float minfloat(float a, float b) { return a < b ? a : b; }
-float avgfloat(float *data, int len) {
+float vs__maxfloat(float a, float b) { return a > b ? a : b; }
+float vs__minfloat(float a, float b) { return a < b ? a : b; }
+float vs__avgfloat(float *data, int len) {
   double sum = 0.0;
   for (int i = 0; i < len; i++) sum += data[i];
   return sum / len;
 }
 
-chunk *chunk_new(int dims[static 3]) {
+chunk *vs_chunk_new(int dims[static 3]) {
   chunk *ret = malloc(sizeof(chunk) + dims[0] * dims[1] * dims[2] * sizeof(float));
 
   if (ret == NULL) {
@@ -1585,11 +1582,11 @@ chunk *chunk_new(int dims[static 3]) {
   return ret;
 }
 
-void chunk_free(chunk *chunk) {
+void vs_chunk_free(chunk *chunk) {
   free(chunk);
 }
 
-slice *slice_new(int dims[static 2]) {
+slice *vs_slice_new(int dims[static 2]) {
   slice *ret = malloc(sizeof(slice) + dims[0] * dims[1] * sizeof(float));
 
   if (ret == NULL) {
@@ -1603,33 +1600,33 @@ slice *slice_new(int dims[static 2]) {
   return ret;
 }
 
-void slice_free(slice *slice) {
+void vs_slice_free(slice *slice) {
   free(slice);
 }
 
-f32 slice_get(slice *slice, s32 y, s32 x) {
+f32 vs_slice_get(slice *slice, s32 y, s32 x) {
   return slice->data[y * slice->dims[1] + x];
 }
 
-void slice_set(slice *slice, s32 y, s32 x, f32 data) {
+void vs_slice_set(slice *slice, s32 y, s32 x, f32 data) {
   slice->data[y * slice->dims[1] + x] = data;
 }
 
-f32 chunk_get(chunk *chunk, s32 z, s32 y, s32 x) {
+f32 vs_chunk_get(chunk *chunk, s32 z, s32 y, s32 x) {
   return chunk->data[z * chunk->dims[1] * chunk->dims[2] + y * chunk->dims[2] + x];
 }
 
-void chunk_set(chunk *chunk, s32 z, s32 y, s32 x, f32 data) {
+void vs_chunk_set(chunk *chunk, s32 z, s32 y, s32 x, f32 data) {
   chunk->data[z * chunk->dims[1] * chunk->dims[2] + y * chunk->dims[2] + x] = data;
 }
 
 
-chunk* maxpool(chunk* inchunk, s32 kernel, s32 stride) {
+chunk* vs_maxpool(chunk* inchunk, s32 kernel, s32 stride) {
   s32 dims[3] = {
     (inchunk->dims[0] + stride - 1) / stride, (inchunk->dims[1] + stride - 1) / stride,
     (inchunk->dims[2] + stride - 1) / stride
   };
-  chunk *ret = chunk_new(dims);
+  chunk *ret = vs_chunk_new(dims);
   for (s32 z = 0; z < ret->dims[0]; z++)
     for (s32 y = 0; y < ret->dims[1]; y++)
       for (s32 x = 0; x < ret->dims[2]; x++) {
@@ -1640,20 +1637,20 @@ chunk* maxpool(chunk* inchunk, s32 kernel, s32 stride) {
             for (s32 xi = 0; xi < kernel; xi++) {
               if (z + zi > inchunk->dims[0] || y + yi > inchunk->dims[1] || x + xi > inchunk->dims[2]) { continue; }
 
-              if ((val32 = chunk_get(inchunk, z * stride + zi, y * stride + yi,
+              if ((val32 = vs_chunk_get(inchunk, z * stride + zi, y * stride + yi,
                                                                        x * stride + xi)) > max32) { max32 = val32; }
             }
-        chunk_set(ret, z, y, x, max32);
+        vs_chunk_set(ret, z, y, x, max32);
       }
   return ret;
 }
 
-chunk *avgpool(chunk *inchunk, s32 kernel, s32 stride) {
+chunk *vs_avgpool(chunk *inchunk, s32 kernel, s32 stride) {
   s32 dims[3] = {
     (inchunk->dims[0] + stride - 1) / stride, (inchunk->dims[1] + stride - 1) / stride,
     (inchunk->dims[2] + stride - 1) / stride
   };
-  chunk *ret = chunk_new(dims);
+  chunk *ret = vs_chunk_new(dims);
   s32 len = kernel * kernel * kernel;
   s32 i = 0;
   f32 *data = malloc(len * sizeof(f32));
@@ -1669,19 +1666,19 @@ chunk *avgpool(chunk *inchunk, s32 kernel, s32 stride) {
                 len--;
                 continue;
               }
-              data[i++] = chunk_get(inchunk, z * stride + zi, y * stride + yi, x * stride + xi);
+              data[i++] = vs_chunk_get(inchunk, z * stride + zi, y * stride + yi, x * stride + xi);
             }
-        chunk_set(ret, z, y, x, avgfloat(data, len));
+        vs_chunk_set(ret, z, y, x, vs__avgfloat(data, len));
       }
   return ret;
 }
 
-chunk *sumpool(chunk *inchunk, s32 kernel, s32 stride) {
+chunk *vs_sumpool(chunk *inchunk, s32 kernel, s32 stride) {
   s32 dims[3] = {
     (inchunk->dims[0] + stride - 1) / stride, (inchunk->dims[1] + stride - 1) / stride,
     (inchunk->dims[2] + stride - 1) / stride
   };
-  chunk *ret = chunk_new(dims);
+  chunk *ret = vs_chunk_new(dims);
   for (s32 z = 0; z < ret->dims[0]; z++)
     for (s32 y = 0; y < ret->dims[1]; y++)
       for (s32 x = 0; x < ret->dims[2]; x++) {
@@ -1692,29 +1689,29 @@ chunk *sumpool(chunk *inchunk, s32 kernel, s32 stride) {
               if (z + zi > inchunk->dims[0] || y + yi > inchunk->dims[1] || x + xi > inchunk->dims[2]) {
                 continue;
               }
-              sum += chunk_get(inchunk, z * stride + zi, y * stride + yi, x * stride + xi);
+              sum += vs_chunk_get(inchunk, z * stride + zi, y * stride + yi, x * stride + xi);
             }
-        chunk_set(ret, z, y, x, sum);
+        vs_chunk_set(ret, z, y, x, sum);
       }
   return ret;
 }
 
 
-chunk *create_box_kernel(s32 size) {
+chunk *vs__create_box_kernel(s32 size) {
   int dims[3] = {size,size,size};
-  chunk* kernel = chunk_new(dims);
+  chunk* kernel = vs_chunk_new(dims);
   float value = 1.0f / (size * size * size);
   for (s32 z = 0; z < size; z++) {
-    for (s32 y = 0; y < size; y++) { for (s32 x = 0; x < size; x++) { chunk_set(kernel, z, y, x, value); } }
+    for (s32 y = 0; y < size; y++) { for (s32 x = 0; x < size; x++) { vs_chunk_set(kernel, z, y, x, value); } }
   }
   return kernel;
 }
 
-chunk* convolve3d(chunk* input, chunk* kernel) {
+chunk* vs__convolve3d(chunk* input, chunk* kernel) {
 
   s32 dims[3] = {input->dims[0], input->dims[1], input->dims[2]};
 
-  chunk* ret = chunk_new(dims);
+  chunk* ret = vs_chunk_new(dims);
   s32 pad = kernel->dims[0] / 2;
 
   for (s32 z = 0; z < input->dims[0]; z++) {
@@ -1728,46 +1725,46 @@ chunk* convolve3d(chunk* input, chunk* kernel) {
               s32 iy = y + ky - pad;
               s32 ix = x + kx - pad;
               if (iz >= 0 && iz < input->dims[0] && iy >= 0 && iy < input->dims[1] && ix >= 0 && ix < input->dims[2]) {
-                float input_val = chunk_get(input, iz, iy, ix);
-                sum += input_val * chunk_get(kernel, kz, ky, kx);
+                float input_val = vs_chunk_get(input, iz, iy, ix);
+                sum += input_val * vs_chunk_get(kernel, kz, ky, kx);
               }
             }
           }
         }
-        chunk_set(ret, z, y, x, sum);
+        vs_chunk_set(ret, z, y, x, sum);
       }
     }
   }
   return ret;
 }
 
-chunk* unsharp_mask_3d(chunk* input, float amount, s32 kernel_size) {
+chunk* vs_unsharp_mask_3d(chunk* input, float amount, s32 kernel_size) {
   int dims[3] = {input->dims[0], input->dims[1], input->dims[2]};
-  chunk* kernel = create_box_kernel(kernel_size);
-  chunk* blurred = convolve3d(input, kernel);
-  chunk* output = chunk_new(dims);
+  chunk* kernel = vs__create_box_kernel(kernel_size);
+  chunk* blurred = vs__convolve3d(input, kernel);
+  chunk* output = vs_chunk_new(dims);
 
   for (s32 z = 0; z < input->dims[0]; z++) {
     for (s32 y = 0; y < input->dims[1]; y++) {
       for (s32 x = 0; x < input->dims[2]; x++) {
-        float original = chunk_get(input, z, y, x);
-        float blur = chunk_get(blurred, z, y, x);
+        float original = vs_chunk_get(input, z, y, x);
+        float blur = vs_chunk_get(blurred, z, y, x);
         float sharpened = original + amount * (original - blur);
-        chunk_set(output, z, y, x, sharpened);
+        vs_chunk_set(output, z, y, x, sharpened);
       }
     }
   }
 
-  chunk_free(kernel);
-  chunk_free(blurred);
+  vs_chunk_free(kernel);
+  vs_chunk_free(blurred);
 
   return output;
 }
 
-chunk* normalize_chunk(chunk* input) {
+chunk* vs_normalize_chunk(chunk* input) {
   // Create output chunk with same dimensions
   int dims[3] = {input->dims[0], input->dims[1], input->dims[2]};
-  chunk* output = chunk_new(dims);
+  chunk* output = vs_chunk_new(dims);
 
   // First pass: find min and max values
   float min_val = INFINITY;
@@ -1776,9 +1773,9 @@ chunk* normalize_chunk(chunk* input) {
   for (s32 z = 0; z < input->dims[0]; z++) {
     for (s32 y = 0; y < input->dims[1]; y++) {
       for (s32 x = 0; x < input->dims[2]; x++) {
-        float val = chunk_get(input, z, y, x);
-        min_val = minfloat(min_val, val);
-        max_val = maxfloat(max_val, val);
+        float val = vs_chunk_get(input, z, y, x);
+        min_val = vs__minfloat(min_val, val);
+        max_val = vs__maxfloat(max_val, val);
       }
     }
   }
@@ -1789,7 +1786,7 @@ chunk* normalize_chunk(chunk* input) {
     for (s32 z = 0; z < input->dims[0]; z++) {
       for (s32 y = 0; y < input->dims[1]; y++) {
         for (s32 x = 0; x < input->dims[2]; x++) {
-          chunk_set(output, z, y, x, 0.5f);
+          vs_chunk_set(output, z, y, x, 0.5f);
         }
       }
     }
@@ -1800,9 +1797,9 @@ chunk* normalize_chunk(chunk* input) {
   for (s32 z = 0; z < input->dims[0]; z++) {
     for (s32 y = 0; y < input->dims[1]; y++) {
       for (s32 x = 0; x < input->dims[2]; x++) {
-        float val = chunk_get(input, z, y, x);
+        float val = vs_chunk_get(input, z, y, x);
         float normalized = (val - min_val) / range;
-        chunk_set(output, z, y, x, normalized);
+        vs_chunk_set(output, z, y, x, normalized);
       }
     }
   }
@@ -1810,7 +1807,7 @@ chunk* normalize_chunk(chunk* input) {
   return output;
 }
 
-chunk* transpose(chunk* input, const char* current_layout) {
+chunk* vs_transpose(chunk* input, const char* current_layout) {
     if (!input || !current_layout || strlen(current_layout) != 3) {
         return NULL;
     }
@@ -1839,12 +1836,12 @@ chunk* transpose(chunk* input, const char* current_layout) {
         input->dims[mapping[2]]   // x
     };
 
-    chunk* output = chunk_new(new_dims);
+    chunk* output = vs_chunk_new(new_dims);
     if (!output) {
         return NULL;
     }
 
-    // Perform the transpose
+    // Perform the vs_transpose
     for (int z = 0; z < new_dims[0]; z++) {
         for (int y = 0; y < new_dims[1]; y++) {
             for (int x = 0; x < new_dims[2]; x++) {
@@ -1856,8 +1853,8 @@ chunk* transpose(chunk* input, const char* current_layout) {
                     idx[mapping[2]]   // C
                 };
 
-                float value = chunk_get(input, old_indices[0], old_indices[1], old_indices[2]);
-                chunk_set(output, z, y, x, value);
+                float value = vs_chunk_get(input, old_indices[0], old_indices[1], old_indices[2]);
+                vs_chunk_set(output, z, y, x, value);
             }
         }
     }
@@ -1867,7 +1864,7 @@ chunk* transpose(chunk* input, const char* current_layout) {
 
 // mesh
 
-mesh* mesh_new(f32 *vertices,
+mesh* vs_mesh_new(f32 *vertices,
                     f32 *normals, // can be NULL if no normals
                     s32 *indices,
                     s32 vertex_count,
@@ -1883,7 +1880,7 @@ mesh* mesh_new(f32 *vertices,
 }
 
 
-void mesh_free(mesh *mesh) {
+void vs_mesh_free(mesh *mesh) {
     if (mesh) {
         free(mesh->vertices);
         free(mesh->indices);
@@ -1892,7 +1889,7 @@ void mesh_free(mesh *mesh) {
     }
 }
 
-void mesh_get_bounds(const mesh *m,
+void vs_mesh_get_bounds(const mesh *m,
                     f32 *origin_z, f32 *origin_y, f32 *origin_x,
                     f32 *length_z, f32 *length_y, f32 *length_x) {
     if (!m || !m->vertices || m->vertex_count <= 0) {
@@ -1932,7 +1929,7 @@ void mesh_get_bounds(const mesh *m,
     if (length_x) *length_x = max_x - min_x;
 }
 
-void mesh_translate(mesh *m, f32 z, f32 y, f32 x) {
+void vs_mesh_translate(mesh *m, f32 z, f32 y, f32 x) {
     if (!m || !m->vertices || m->vertex_count <= 0) {
         return;
     }
@@ -1944,7 +1941,7 @@ void mesh_translate(mesh *m, f32 z, f32 y, f32 x) {
     }
 }
 
-void mesh_scale(mesh *m, f32 scale_z, f32 scale_y, f32 scale_x) {
+void vs_mesh_scale(mesh *m, f32 scale_z, f32 scale_y, f32 scale_x) {
     if (!m || !m->vertices || m->vertex_count <= 0) {
         return;
     }
@@ -1976,7 +1973,7 @@ void mesh_scale(mesh *m, f32 scale_z, f32 scale_y, f32 scale_x) {
     }
 }
 
-void interpolate_vertex(f32 isovalue,
+void vs__interpolate_vertex(f32 isovalue,
                                     f32 v1, f32 v2,
                                     f32 x1, f32 y1, f32 z1,
                                     f32 x2, f32 y2, f32 z2,
@@ -2006,12 +2003,12 @@ void interpolate_vertex(f32 isovalue,
     *out_z = z1 + mu * (z2 - z1);
 }
 
-f32 get_value(const f32* values, s32 x, s32 y, s32 z,
+f32 vs__get_value(const f32* values, s32 x, s32 y, s32 z,
                             s32 dimx, s32 dimy, s32 dimz) {
     return values[z * (dimx * dimy) + y * dimx + x];
 }
 
-void process_cube(const f32* values,
+void vs__process_cube(const f32* values,
                         s32 x, s32 y, s32 z,
                         s32 dimx, s32 dimy, s32 dimz,
                         f32 isovalue,
@@ -2314,14 +2311,14 @@ static const s32 triTable[256][16] =
 {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1} };
 
     f32 cube_values[8];
-    cube_values[0] = get_value(values, x, y, z, dimx, dimy, dimz);
-    cube_values[1] = get_value(values, x + 1, y, z, dimx, dimy, dimz);
-    cube_values[2] = get_value(values, x + 1, y + 1, z, dimx, dimy, dimz);
-    cube_values[3] = get_value(values, x, y + 1, z, dimx, dimy, dimz);
-    cube_values[4] = get_value(values, x, y, z + 1, dimx, dimy, dimz);
-    cube_values[5] = get_value(values, x + 1, y, z + 1, dimx, dimy, dimz);
-    cube_values[6] = get_value(values, x + 1, y + 1, z + 1, dimx, dimy, dimz);
-    cube_values[7] = get_value(values, x, y + 1, z + 1, dimx, dimy, dimz);
+    cube_values[0] = vs__get_value(values, x, y, z, dimx, dimy, dimz);
+    cube_values[1] = vs__get_value(values, x + 1, y, z, dimx, dimy, dimz);
+    cube_values[2] = vs__get_value(values, x + 1, y + 1, z, dimx, dimy, dimz);
+    cube_values[3] = vs__get_value(values, x, y + 1, z, dimx, dimy, dimz);
+    cube_values[4] = vs__get_value(values, x, y, z + 1, dimx, dimy, dimz);
+    cube_values[5] = vs__get_value(values, x + 1, y, z + 1, dimx, dimy, dimz);
+    cube_values[6] = vs__get_value(values, x + 1, y + 1, z + 1, dimx, dimy, dimz);
+    cube_values[7] = vs__get_value(values, x, y + 1, z + 1, dimx, dimy, dimz);
 
     s32 cubeindex = 0;
     for (s32 i = 0; i < 8; i++) {
@@ -2335,73 +2332,73 @@ static const s32 triTable[256][16] =
     f32 edge_verts[12][3];  // [x,y,z] for each possible edge vertex
 
     if (edgeTable[cubeindex] & 1)
-        interpolate_vertex(isovalue, cube_values[0], cube_values[1],
+        vs__interpolate_vertex(isovalue, cube_values[0], cube_values[1],
                          x, y, z,             // vertex 0
                          x + 1, y, z,         // vertex 1
                          &edge_verts[0][0], &edge_verts[0][1], &edge_verts[0][2]);
 
     if (edgeTable[cubeindex] & 2)
-        interpolate_vertex(isovalue, cube_values[1], cube_values[2],
+        vs__interpolate_vertex(isovalue, cube_values[1], cube_values[2],
                          x + 1, y, z,         // vertex 1
                          x + 1, y + 1, z,     // vertex 2
                          &edge_verts[1][0], &edge_verts[1][1], &edge_verts[1][2]);
 
     if (edgeTable[cubeindex] & 4)
-        interpolate_vertex(isovalue, cube_values[2], cube_values[3],
+        vs__interpolate_vertex(isovalue, cube_values[2], cube_values[3],
                          x + 1, y + 1, z,     // vertex 2
                          x, y + 1, z,         // vertex 3
                          &edge_verts[2][0], &edge_verts[2][1], &edge_verts[2][2]);
 
     if (edgeTable[cubeindex] & 8)
-        interpolate_vertex(isovalue, cube_values[3], cube_values[0],
+        vs__interpolate_vertex(isovalue, cube_values[3], cube_values[0],
                          x, y + 1, z,         // vertex 3
                          x, y, z,             // vertex 0
                          &edge_verts[3][0], &edge_verts[3][1], &edge_verts[3][2]);
 
     if (edgeTable[cubeindex] & 16)
-        interpolate_vertex(isovalue, cube_values[4], cube_values[5],
+        vs__interpolate_vertex(isovalue, cube_values[4], cube_values[5],
                          x, y, z + 1,         // vertex 4
                          x + 1, y, z + 1,     // vertex 5
                          &edge_verts[4][0], &edge_verts[4][1], &edge_verts[4][2]);
 
     if (edgeTable[cubeindex] & 32)
-        interpolate_vertex(isovalue, cube_values[5], cube_values[6],
+        vs__interpolate_vertex(isovalue, cube_values[5], cube_values[6],
                          x + 1, y, z + 1,     // vertex 5
                          x + 1, y + 1, z + 1, // vertex 6
                          &edge_verts[5][0], &edge_verts[5][1], &edge_verts[5][2]);
 
     if (edgeTable[cubeindex] & 64)
-        interpolate_vertex(isovalue, cube_values[6], cube_values[7],
+        vs__interpolate_vertex(isovalue, cube_values[6], cube_values[7],
                          x + 1, y + 1, z + 1, // vertex 6
                          x, y + 1, z + 1,     // vertex 7
                          &edge_verts[6][0], &edge_verts[6][1], &edge_verts[6][2]);
 
     if (edgeTable[cubeindex] & 128)
-        interpolate_vertex(isovalue, cube_values[7], cube_values[4],
+        vs__interpolate_vertex(isovalue, cube_values[7], cube_values[4],
                          x, y + 1, z + 1,     // vertex 7
                          x, y, z + 1,         // vertex 4
                          &edge_verts[7][0], &edge_verts[7][1], &edge_verts[7][2]);
 
     if (edgeTable[cubeindex] & 256)
-        interpolate_vertex(isovalue, cube_values[0], cube_values[4],
+        vs__interpolate_vertex(isovalue, cube_values[0], cube_values[4],
                          x, y, z,             // vertex 0
                          x, y, z + 1,         // vertex 4
                          &edge_verts[8][0], &edge_verts[8][1], &edge_verts[8][2]);
 
     if (edgeTable[cubeindex] & 512)
-        interpolate_vertex(isovalue, cube_values[1], cube_values[5],
+        vs__interpolate_vertex(isovalue, cube_values[1], cube_values[5],
                          x + 1, y, z,         // vertex 1
                          x + 1, y, z + 1,     // vertex 5
                          &edge_verts[9][0], &edge_verts[9][1], &edge_verts[9][2]);
 
     if (edgeTable[cubeindex] & 1024)
-        interpolate_vertex(isovalue, cube_values[2], cube_values[6],
+        vs__interpolate_vertex(isovalue, cube_values[2], cube_values[6],
                          x + 1, y + 1, z,     // vertex 2
                          x + 1, y + 1, z + 1, // vertex 6
                          &edge_verts[10][0], &edge_verts[10][1], &edge_verts[10][2]);
 
     if (edgeTable[cubeindex] & 2048)
-        interpolate_vertex(isovalue, cube_values[3], cube_values[7],
+        vs__interpolate_vertex(isovalue, cube_values[3], cube_values[7],
                          x, y + 1, z,         // vertex 3
                          x, y + 1, z + 1,     // vertex 7
                          &edge_verts[11][0], &edge_verts[11][1], &edge_verts[11][2]);
@@ -2421,7 +2418,7 @@ static const s32 triTable[256][16] =
     }
 }
 
-s32 march_cubes(const f32* values,
+s32 vs_march_cubes(const f32* values,
                 s32 dimz, s32 dimy, s32 dimx,
                 f32 isovalue,
                 f32** out_vertices,      //  [z,y,x,z,y,x,...]
@@ -2446,7 +2443,7 @@ s32 march_cubes(const f32* values,
     for (s32 z = 0; z < dimz - 1; z++) {
         for (s32 y = 0; y < dimy - 1; y++) {
             for (s32 x = 0; x < dimx - 1; x++) {
-                process_cube(values, x, y, z, dimx, dimy, dimz,
+                vs__process_cube(values, x, y, z, dimx, dimy, dimz,
                            isovalue, vertices, indices,
                            &vertex_count, &index_count);
             }
@@ -2466,7 +2463,7 @@ s32 march_cubes(const f32* values,
 }
 
 // nrrd
-int parse_sizes(char* value, nrrd* nrrd) {
+int vs__nrrd_parse_sizes(char* value, nrrd* nrrd) {
     char* token = strtok(value, " ");
     s32 i = 0;
     while (token != NULL && i < nrrd->dimension) {
@@ -2481,7 +2478,7 @@ int parse_sizes(char* value, nrrd* nrrd) {
     return (i == nrrd->dimension) ? 0 : 1;
 }
 
-int parse_space_directions(char* value, nrrd* nrrd) {
+int vs__nrrd_parse_space_directions(char* value, nrrd* nrrd) {
     char* token = strtok(value, ") (");
     s32 i = 0;
     while (token != NULL && i < nrrd->dimension) {
@@ -2504,7 +2501,7 @@ int parse_space_directions(char* value, nrrd* nrrd) {
     return 0;
 }
 
-int parse_space_origin(char* value, nrrd* nrrd) {
+int vs__nrrd_parse_space_origin(char* value, nrrd* nrrd) {
     value++; // Skip first '('
     value[strlen(value)-1] = '\0'; // Remove last ')'
 
@@ -2518,7 +2515,7 @@ int parse_space_origin(char* value, nrrd* nrrd) {
     return 0;
 }
 
-size_t get_type_size(const char* type) {
+size_t vs__nrrd_get_type_size(const char* type) {
     if (strcmp(type, "uint8") == 0 || strcmp(type, "uchar") == 0) return 1;
     if (strcmp(type, "uint16") == 0) return 2;
     if (strcmp(type, "uint32") == 0) return 4;
@@ -2527,7 +2524,7 @@ size_t get_type_size(const char* type) {
     return 0;
 }
 
-int read_raw_data(FILE* fp, nrrd* nrrd) {
+int vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd) {
     size_t bytes_read = fread(nrrd->data, 1, nrrd->data_size, fp);
     if (bytes_read != nrrd->data_size) {
         printf("Failed to read data: expected %zu bytes, got %zu",
@@ -2537,7 +2534,7 @@ int read_raw_data(FILE* fp, nrrd* nrrd) {
     return 0;
 }
 
-int read_gzip_data(FILE* fp, nrrd* nrrd) {
+int vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd) {
     printf("reading compressed data is not supported yet for nrrd\n");
     assert("false");
     return 1;
@@ -2584,7 +2581,7 @@ int read_gzip_data(FILE* fp, nrrd* nrrd) {
     #endif
 }
 
-nrrd* nrrd_read(const char* filename) {
+nrrd* vs__nrrd_read(const char* filename) {
     FILE* fp = fopen(filename, "rb");
     if (!fp) {
         printf("could not open %s\n",filename);
@@ -2606,21 +2603,21 @@ nrrd* nrrd_read(const char* filename) {
         nrrd->is_valid = false;
         goto cleanup;
     }
-    trim(line);
+    vs__trim(line);
 
-    if (!str_starts_with(line, "NRRD")) {
+    if (!vs__str_starts_with(line, "NRRD")) {
         printf("Not a NRRD file: %s", line);
         nrrd->is_valid = false;
         goto cleanup;
     }
 
     while (fgets(line, sizeof(line), fp)) {
-        trim(line);
+        vs__trim(line);
 
         // Empty line marks end of header
         if (strlen(line) == 0) break;
 
-        //if we are left with just a newline after trimming then we have a blank line, we are going to
+        //if we are left with just a newline after vs__trimming then we have a blank line, we are going to
         // start reading data now so we need to break
         if(line[0] == '\n') break;
 
@@ -2635,8 +2632,8 @@ nrrd* nrrd_read(const char* filename) {
         char* value = separator + 1;
         while (*value == ' ') value++;
 
-        trim(key);
-        trim(value);
+        vs__trim(key);
+        vs__trim(value);
 
         if (strcmp(key, "type") == 0) {
             strncpy(nrrd->type, value, sizeof(nrrd->type)-1);
@@ -2653,13 +2650,13 @@ nrrd* nrrd_read(const char* filename) {
             strncpy(nrrd->space, value, sizeof(nrrd->space)-1);
         }
         else if (strcmp(key, "sizes") == 0) {
-            if (!parse_sizes(value, nrrd)) {
+            if (!vs__nrrd_parse_sizes(value, nrrd)) {
                 nrrd->is_valid = false;
                 goto cleanup;
             }
         }
         else if (strcmp(key, "space directions") == 0) {
-            if (!parse_space_directions(value, nrrd)) {
+            if (!vs__nrrd_parse_space_directions(value, nrrd)) {
                 nrrd->is_valid = false;
                 goto cleanup;
             }
@@ -2671,14 +2668,14 @@ nrrd* nrrd_read(const char* filename) {
             strncpy(nrrd->encoding, value, sizeof(nrrd->encoding)-1);
         }
         else if (strcmp(key, "space origin") == 0) {
-            if (!parse_space_origin(value, nrrd)) {
+            if (!vs__nrrd_parse_space_origin(value, nrrd)) {
                 nrrd->is_valid = false;
                 goto cleanup;
             }
         }
     }
 
-    size_t type_size = get_type_size(nrrd->type);
+    size_t type_size = vs__nrrd_get_type_size(nrrd->type);
     if (type_size == 0) {
         printf("Unsupported type: %s", nrrd->type);
         nrrd->is_valid = false;
@@ -2698,13 +2695,13 @@ nrrd* nrrd_read(const char* filename) {
     }
 
     if (strcmp(nrrd->encoding, "raw") == 0) {
-        if (!read_raw_data(fp, nrrd)) {
+        if (!vs__nrrd_read_raw_data(fp, nrrd)) {
             nrrd->is_valid = false;
             goto cleanup;
         }
     }
     else if (strcmp(nrrd->encoding, "gzip") == 0) {
-        if (!read_gzip_data(fp, nrrd)) {
+        if (!vs__nrrd_read_gzip_data(fp, nrrd)) {
             nrrd->is_valid = false;
             goto cleanup;
         }
@@ -2725,7 +2722,7 @@ cleanup:
     return nrrd;
 }
 
-void nrrd_free(nrrd* nrrd) {
+void vs__nrrd_free(nrrd* nrrd) {
     if (nrrd) {
         if (nrrd->data) free(nrrd->data);
         free(nrrd);
@@ -2734,7 +2731,7 @@ void nrrd_free(nrrd* nrrd) {
 
 // obj
 
-s32 read_obj(const char* filename,
+s32 vs_read_obj(const char* filename,
             f32** vertices, s32** indices,
             s32* vertex_count, s32* index_count) {
     FILE* fp = fopen(filename, "r");
@@ -2810,7 +2807,7 @@ s32 read_obj(const char* filename,
     return 0;
 }
 
-s32 write_obj(const char* filename,
+s32 vs_write_obj(const char* filename,
              const f32* vertices, const s32* indices,
              s32 vertex_count, s32 index_count) {
     FILE* fp = fopen(filename, "w");
@@ -2846,7 +2843,7 @@ s32 write_obj(const char* filename,
 //TODO: most the ply files I come across use x y z order. should we swap the order here so they
 // end up in the data as z y x?
 
-s32 write_ply(const char *filename,
+s32 vs_write_ply(const char *filename,
                     const f32 *vertices,
                     const f32 *normals, // can be NULL if no normals
                     const s32 *indices,
@@ -2907,7 +2904,7 @@ s32 write_ply(const char *filename,
   return 0;
 }
 
-s32 read_ply(const char *filename,
+s32 vs_read_ply(const char *filename,
                           f32 **out_vertices,
                           f32 **out_normals,
                           s32 **out_indices,
@@ -3153,7 +3150,7 @@ s32 read_ply(const char *filename,
 
 // ppm
 
-ppm* ppm_new(u32 width, u32 height) {
+ppm* vs_ppm_new(u32 width, u32 height) {
     ppm* img = malloc(sizeof(ppm));
     if (!img) {
         return NULL;
@@ -3172,14 +3169,14 @@ ppm* ppm_new(u32 width, u32 height) {
     return img;
 }
 
-void ppm_free(ppm* img) {
+void vs_ppm_free(ppm* img) {
     if (img) {
         free(img->data);
         free(img);
     }
 }
 
-void skip_whitespace_and_comments(FILE* fp) {
+void vs__skip_whitespace_and_comments(FILE* fp) {
     int c;
     while ((c = fgetc(fp)) != EOF) {
         if (c == '#') {
@@ -3192,7 +3189,7 @@ void skip_whitespace_and_comments(FILE* fp) {
     }
 }
 
-bool read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val) {
+bool vs__ppm_read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val) {
     char magic[3];
 
     if (fgets(magic, sizeof(magic), fp) == NULL) {
@@ -3205,13 +3202,13 @@ bool read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val)
 
     *type = magic[1] == '3' ? P3 : P6;
 
-    skip_whitespace_and_comments(fp);
+    vs__skip_whitespace_and_comments(fp);
 
     if (fscanf(fp, "%u %u", width, height) != 2) {
         return false;
     }
 
-    skip_whitespace_and_comments(fp);
+    vs__skip_whitespace_and_comments(fp);
 
     unsigned int max_val_temp;
     if (fscanf(fp, "%u", &max_val_temp) != 1 || max_val_temp > 255) {
@@ -3224,7 +3221,7 @@ bool read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val)
     return true;
 }
 
-ppm* read_ppm(const char* filename) {
+ppm* vs_read_ppm(const char* filename) {
     FILE* fp = fopen(filename, "rb");
     if (!fp) {
         return NULL;
@@ -3234,12 +3231,12 @@ ppm* read_ppm(const char* filename) {
     u32 width, height;
     u8 max_val;
 
-    if (!read_header(fp, &type, &width, &height, &max_val)) {
+    if (!vs__ppm_read_header(fp, &type, &width, &height, &max_val)) {
         fclose(fp);
         return NULL;
     }
 
-    ppm* img = ppm_new(width, height);
+    ppm* img = vs_ppm_new(width, height);
     if (!img) {
         fclose(fp);
         return NULL;
@@ -3253,7 +3250,7 @@ ppm* read_ppm(const char* filename) {
         for (size_t i = 0; i < pixel_count; i++) {
             unsigned int val;
             if (fscanf(fp, "%u", &val) != 1 || val > max_val) {
-                ppm_free(img);
+                vs_ppm_free(img);
                 fclose(fp);
                 return NULL;
             }
@@ -3262,7 +3259,7 @@ ppm* read_ppm(const char* filename) {
     } else {
         // Binary format
         if (fread(img->data, 1, pixel_count, fp) != pixel_count) {
-            ppm_free(img);
+            vs_ppm_free(img);
             fclose(fp);
             fclose(fp);
             return NULL;
@@ -3273,7 +3270,7 @@ ppm* read_ppm(const char* filename) {
     return img;
 }
 
-int write_ppm(const char* filename, const ppm* img, ppm_type type) {
+int vs_write_ppm(const char* filename, const ppm* img, ppm_type type) {
     if (!img || !img->data) {
         return 1;
     }
@@ -3308,7 +3305,7 @@ int write_ppm(const char* filename, const ppm* img, ppm_type type) {
     return 0;
 }
 
-void ppm_set_pixel(ppm* img, u32 x, u32 y, u8 r, u8 g, u8 b) {
+void vs_ppm_set_pixel(ppm* img, u32 x, u32 y, u8 r, u8 g, u8 b) {
     if (!img || x >= img->width || y >= img->height) {
         return;
     }
@@ -3319,7 +3316,7 @@ void ppm_set_pixel(ppm* img, u32 x, u32 y, u8 r, u8 g, u8 b) {
     img->data[idx + 2] = b;
 }
 
-void ppm_get_pixel(const ppm* img, u32 x, u32 y, u8* r, u8* g, u8* b) {
+void vs_ppm_get_pixel(const ppm* img, u32 x, u32 y, u8* r, u8* g, u8* b) {
     if (!img || x >= img->width || y >= img->height) {
         *r = *g = *b = 0;
         return;
@@ -3332,7 +3329,7 @@ void ppm_get_pixel(const ppm* img, u32 x, u32 y, u8* r, u8* g, u8* b) {
 }
 
 // tiff
-uint32_t readBytes(FILE* fp, int count, int littleEndian) {
+uint32_t vs__tiff_read_bytes(FILE* fp, int count, int littleEndian) {
     uint32_t value = 0;
     uint8_t byte;
 
@@ -3351,7 +3348,7 @@ uint32_t readBytes(FILE* fp, int count, int littleEndian) {
     return value;
 }
 
-void readString(FILE* fp, char* str, uint32_t offset, uint32_t count, long currentPos) {
+void vs__tiff_read_string(FILE* fp, char* str, uint32_t offset, uint32_t count, long currentPos) {
     long savedPos = ftell(fp);
     fseek(fp, offset, SEEK_SET);
     fread(str, 1, count - 1, fp);
@@ -3359,20 +3356,20 @@ void readString(FILE* fp, char* str, uint32_t offset, uint32_t count, long curre
     fseek(fp, savedPos, SEEK_SET);
 }
 
-float readRational(FILE* fp, uint32_t offset, int littleEndian, long currentPos) {
+float vs__tiff_read_rational(FILE* fp, uint32_t offset, int littleEndian, long currentPos) {
     long savedPos = ftell(fp);
     fseek(fp, offset, SEEK_SET);
-    uint32_t numerator = readBytes(fp, 4, littleEndian);
-    uint32_t denominator = readBytes(fp, 4, littleEndian);
+    uint32_t numerator = vs__tiff_read_bytes(fp, 4, littleEndian);
+    uint32_t denominator = vs__tiff_read_bytes(fp, 4, littleEndian);
     fseek(fp, savedPos, SEEK_SET);
     return denominator ? (float)numerator / denominator : 0.0f;
 }
 
-void readIFDEntry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart) {
-    uint16_t tag = readBytes(fp, 2, littleEndian);
-    uint16_t type = readBytes(fp, 2, littleEndian);
-    uint32_t count = readBytes(fp, 4, littleEndian);
-    uint32_t valueOffset = readBytes(fp, 4, littleEndian);
+void vs__tiff_read_ifd_entry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart) {
+    uint16_t tag = vs__tiff_read_bytes(fp, 2, littleEndian);
+    uint16_t type = vs__tiff_read_bytes(fp, 2, littleEndian);
+    uint32_t count = vs__tiff_read_bytes(fp, 4, littleEndian);
+    uint32_t valueOffset = vs__tiff_read_bytes(fp, 4, littleEndian);
 
     long currentPos = ftell(fp);
 
@@ -3396,13 +3393,13 @@ void readIFDEntry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart)
             dir->photometric = (uint16_t)valueOffset;
             break;
         case TIFFTAG_IMAGEDESCRIPTION:
-            readString(fp, dir->imageDescription, valueOffset, count, currentPos);
+            vs__tiff_read_string(fp, dir->imageDescription, valueOffset, count, currentPos);
             break;
         case TIFFTAG_SOFTWARE:
-            readString(fp, dir->software, valueOffset, count, currentPos);
+            vs__tiff_read_string(fp, dir->software, valueOffset, count, currentPos);
             break;
         case TIFFTAG_DATETIME:
-            readString(fp, dir->dateTime, valueOffset, count, currentPos);
+            vs__tiff_read_string(fp, dir->dateTime, valueOffset, count, currentPos);
             break;
         case TIFFTAG_SAMPLESPERPIXEL:
             dir->samplesPerPixel = (uint16_t)valueOffset;
@@ -3414,10 +3411,10 @@ void readIFDEntry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart)
             dir->planarConfig = (uint16_t)valueOffset;
             break;
         case TIFFTAG_XRESOLUTION:
-            dir->xResolution = readRational(fp, valueOffset, littleEndian, currentPos);
+            dir->xResolution = vs__tiff_read_rational(fp, valueOffset, littleEndian, currentPos);
             break;
         case TIFFTAG_YRESOLUTION:
-            dir->yResolution = readRational(fp, valueOffset, littleEndian, currentPos);
+            dir->yResolution = vs__tiff_read_rational(fp, valueOffset, littleEndian, currentPos);
             break;
         case TIFFTAG_RESOLUTIONUNIT:
             dir->resolutionUnit = (uint16_t)valueOffset;
@@ -3434,7 +3431,7 @@ void readIFDEntry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart)
     }
 }
 
-bool validateDirectory(DirectoryInfo* dir, TiffImage* img) {
+bool vs__tiff_validate_directory(DirectoryInfo* dir, TiffImage* img) {
     if (dir->width == 0 || dir->height == 0) {
         snprintf(img->errorMsg, sizeof(img->errorMsg), "Invalid dimensions");
         return false;
@@ -3473,7 +3470,7 @@ bool validateDirectory(DirectoryInfo* dir, TiffImage* img) {
     return true;
 }
 
-TiffImage* readTIFF(const char* filename) {
+TiffImage* vs_tiff_read(const char* filename) {
     FILE* fp = fopen(filename, "rb");
     if (!fp) return NULL;
 
@@ -3485,7 +3482,7 @@ TiffImage* readTIFF(const char* filename) {
 
     img->isValid = true;
 
-    uint16_t byteOrder = readBytes(fp, 2, 1);
+    uint16_t byteOrder = vs__tiff_read_bytes(fp, 2, 1);
     int littleEndian = (byteOrder == 0x4949);
 
     if (byteOrder != 0x4949 && byteOrder != 0x4D4D) {
@@ -3495,7 +3492,7 @@ TiffImage* readTIFF(const char* filename) {
         return img;
     }
 
-    if (readBytes(fp, 2, littleEndian) != 42) {
+    if (vs__tiff_read_bytes(fp, 2, littleEndian) != 42) {
         img->isValid = false;
         snprintf(img->errorMsg, sizeof(img->errorMsg), "Invalid TIFF version");
         fclose(fp);
@@ -3503,16 +3500,16 @@ TiffImage* readTIFF(const char* filename) {
     }
 
     // First pass: count directories
-    uint32_t ifdOffset = readBytes(fp, 4, littleEndian);
+    uint32_t ifdOffset = vs__tiff_read_bytes(fp, 4, littleEndian);
     img->depth = 0;
     uint32_t nextIFD = ifdOffset;
 
     while (nextIFD != 0) {
         img->depth++;
         fseek(fp, nextIFD, SEEK_SET);
-        uint16_t numEntries = readBytes(fp, 2, littleEndian);
+        uint16_t numEntries = vs__tiff_read_bytes(fp, 2, littleEndian);
         fseek(fp, 12 * numEntries, SEEK_CUR);  // Skip entries
-        nextIFD = readBytes(fp, 4, littleEndian);
+        nextIFD = vs__tiff_read_bytes(fp, 4, littleEndian);
     }
 
     // Allocate directory info array
@@ -3540,18 +3537,18 @@ TiffImage* readTIFF(const char* filename) {
         fseek(fp, nextIFD, SEEK_SET);
         long ifdStart = ftell(fp);
 
-        uint16_t numEntries = readBytes(fp, 2, littleEndian);
+        uint16_t numEntries = vs__tiff_read_bytes(fp, 2, littleEndian);
 
         for (int i = 0; i < numEntries && img->isValid; i++) {
-            readIFDEntry(fp, currentDir, littleEndian, ifdStart);
+            vs__tiff_read_ifd_entry(fp, currentDir, littleEndian, ifdStart);
         }
 
-        if (!validateDirectory(currentDir, img)) {
+        if (!vs__tiff_validate_directory(currentDir, img)) {
             img->isValid = false;
             break;
         }
 
-        nextIFD = readBytes(fp, 4, littleEndian);
+        nextIFD = vs__tiff_read_bytes(fp, 4, littleEndian);
         dirIndex++;
     }
 
@@ -3583,7 +3580,7 @@ TiffImage* readTIFF(const char* filename) {
     return img;
 }
 
-void freeTIFF(TiffImage* img) {
+void vs_tiff_free(TiffImage* img) {
     if (img) {
         free(img->directories);
         free(img->data);
@@ -3591,7 +3588,7 @@ void freeTIFF(TiffImage* img) {
     }
 }
 
-const char* getCompressionName(uint16_t compression) {
+const char* vs_tiff_compression_name(uint16_t compression) {
     switch (compression) {
         case 1: return "None";
         case 2: return "CCITT modified Huffman RLE";
@@ -3606,7 +3603,7 @@ const char* getCompressionName(uint16_t compression) {
     }
 }
 
-const char* getPhotometricName(uint16_t photometric) {
+const char* vs_tiff_photometric_name(uint16_t photometric) {
     switch (photometric) {
         case 0: return "min-is-white";
         case 1: return "min-is-black";
@@ -3620,7 +3617,7 @@ const char* getPhotometricName(uint16_t photometric) {
     }
 }
 
-const char* getPlanarConfigName(uint16_t config) {
+const char* vs_tiff_planar_config_name(uint16_t config) {
     switch (config) {
         case 1: return "single image plane";
         case 2: return "separate image planes";
@@ -3628,7 +3625,7 @@ const char* getPlanarConfigName(uint16_t config) {
     }
 }
 
-const char* getSampleFormatName(uint16_t format) {
+const char* vs_tiff_sample_format_name(uint16_t format) {
     switch (format) {
         case 1: return "unsigned integer";
         case 2: return "signed integer";
@@ -3638,7 +3635,7 @@ const char* getSampleFormatName(uint16_t format) {
     }
 }
 
-const char* getResolutionUnitName(uint16_t unit) {
+const char* vs_tiff_resolution_unit_name(uint16_t unit) {
     switch (unit) {
         case 1: return "unitless";
         case 2: return "inches";
@@ -3647,7 +3644,7 @@ const char* getResolutionUnitName(uint16_t unit) {
     }
 }
 
-void printTIFFTags(const TiffImage* img, int directory) {
+void vs_tiff_print_tags(const TiffImage* img, int directory) {
     if (!img || !img->directories || directory >= img->depth) return;
 
     const DirectoryInfo* dir = &img->directories[directory];
@@ -3664,20 +3661,20 @@ void printTIFFTags(const TiffImage* img, int directory) {
     if (dir->xResolution != 0 || dir->yResolution != 0) {
         printf("  Resolution: %g, %g (%s)\n",
                dir->xResolution, dir->yResolution,
-               getResolutionUnitName(dir->resolutionUnit));
+               vs_tiff_resolution_unit_name(dir->resolutionUnit));
     }
 
     printf("  Bits/Sample: %u\n", dir->bitsPerSample);
-    printf("  Sample Format: %s\n", getSampleFormatName(dir->sampleFormat));
-    printf("  Compression Scheme: %s\n", getCompressionName(dir->compression));
-    printf("  Photometric Interpretation: %s\n", getPhotometricName(dir->photometric));
+    printf("  Sample Format: %s\n", vs_tiff_sample_format_name(dir->sampleFormat));
+    printf("  Compression Scheme: %s\n", vs_tiff_compression_name(dir->compression));
+    printf("  Photometric Interpretation: %s\n", vs_tiff_photometric_name(dir->photometric));
     printf("  Samples/Pixel: %u\n", dir->samplesPerPixel);
 
     if (dir->rowsPerStrip) {
         printf("  Rows/Strip: %u\n", dir->rowsPerStrip);
     }
 
-    printf("  Planar Configuration: %s\n", getPlanarConfigName(dir->planarConfig));
+    printf("  Planar Configuration: %s\n", vs_tiff_planar_config_name(dir->planarConfig));
 
     if (dir->imageDescription[0]) {
         printf("  ImageDescription: %s\n", dir->imageDescription);
@@ -3690,7 +3687,7 @@ void printTIFFTags(const TiffImage* img, int directory) {
     }
 }
 
-void printAllTIFFTags(const TiffImage* img) {
+void vs_tiff_print_all_tags(const TiffImage* img) {
     if (!img) {
         printf("Error: NULL TIFF image\n");
         return;
@@ -3702,12 +3699,12 @@ void printAllTIFFTags(const TiffImage* img) {
     }
 
     for (int i = 0; i < img->depth; i++) {
-        printTIFFTags(img, i);
+        vs_tiff_print_tags(img, i);
     }
 }
 
 
-size_t getTIFFDirectorySize(const TiffImage* img, int directory) {
+size_t vs_tiff_directory_size(const TiffImage* img, int directory) {
     if (!img || !img->isValid || !img->directories || directory >= img->depth) {
         return 0;
     }
@@ -3716,9 +3713,9 @@ size_t getTIFFDirectorySize(const TiffImage* img, int directory) {
     return dir->width * dir->height * (dir->bitsPerSample / 8);
 }
 
-void* readTIFFDirectoryData(const TiffImage* img, int directory) {
+void* vs_tiff_read_directory_data(const TiffImage* img, int directory) {
 
-    size_t bufferSize = getTIFFDirectorySize(img, directory);
+    size_t bufferSize = vs_tiff_directory_size(img, directory);
     void* buffer = malloc(bufferSize);
 
     if (!img || !img->isValid || !img->directories || !buffer || directory >= img->depth) {
@@ -3738,16 +3735,16 @@ void* readTIFFDirectoryData(const TiffImage* img, int directory) {
     return buffer;
 }
 
-uint16_t getTIFFPixel16FromBuffer(const uint16_t* buffer, int y, int x, int width) {
+uint16_t vs_tiff_pixel16(const uint16_t* buffer, int y, int x, int width) {
     return buffer[ y * width + x];
 }
 
-uint8_t getTIFFPixel8FromBuffer(const uint8_t* buffer, int y, int x, int width) {
+uint8_t vs_tiff_pixel8(const uint8_t* buffer, int y, int x, int width) {
     return buffer[y * width + x];
 }
 
 
-void writeBytes(FILE* fp, uint32_t value, int count, int littleEndian) {
+void vs__tiff_write_bytes(FILE* fp, uint32_t value, int count, int littleEndian) {
     if (littleEndian) {
         for (int i = 0; i < count; i++) {
             uint8_t byte = (value >> (i * 8)) & 0xFF;
@@ -3761,21 +3758,21 @@ void writeBytes(FILE* fp, uint32_t value, int count, int littleEndian) {
     }
 }
 
-void writeString(FILE* fp, const char* str, uint32_t offset) {
+void vs__tiff_write_string(FILE* fp, const char* str, uint32_t offset) {
     fseek(fp, offset, SEEK_SET);
     size_t len = strlen(str);
     fwrite(str, 1, len + 1, fp);  // Include null terminator
 }
 
-void writeRational(FILE* fp, float value, uint32_t offset, int littleEndian) {
+void vs__tiff_write_rational(FILE* fp, float value, uint32_t offset, int littleEndian) {
     fseek(fp, offset, SEEK_SET);
     uint32_t numerator = (uint32_t)(value * 1000);
     uint32_t denominator = 1000;
-    writeBytes(fp, numerator, 4, littleEndian);
-    writeBytes(fp, denominator, 4, littleEndian);
+    vs__tiff_write_bytes(fp, numerator, 4, littleEndian);
+    vs__tiff_write_bytes(fp, denominator, 4, littleEndian);
 }
 
-void getCurrentDateTime(char* dateTime) {
+void vs__tiff_current_date_time(char* dateTime) {
     time_t now;
     struct tm* timeinfo;
     time(&now);
@@ -3783,27 +3780,27 @@ void getCurrentDateTime(char* dateTime) {
     strftime(dateTime, 20, "%Y:%m:%d %H:%M:%S", timeinfo);
 }
 
-uint32_t writeIFDEntry(FILE* fp, uint16_t tag, uint16_t type, uint32_t count,
+uint32_t vs__tiff_write_ifd_entry(FILE* fp, uint16_t tag, uint16_t type, uint32_t count,
                              uint32_t value, int littleEndian) {
-    writeBytes(fp, tag, 2, littleEndian);
-    writeBytes(fp, type, 2, littleEndian);
-    writeBytes(fp, count, 4, littleEndian);
-    writeBytes(fp, value, 4, littleEndian);
+    vs__tiff_write_bytes(fp, tag, 2, littleEndian);
+    vs__tiff_write_bytes(fp, type, 2, littleEndian);
+    vs__tiff_write_bytes(fp, count, 4, littleEndian);
+    vs__tiff_write_bytes(fp, value, 4, littleEndian);
     return 12;  // Size of IFD entry
 }
 
-int writeTIFF(const char* filename, const TiffImage* img, bool littleEndian) {
+int vs_write_tiff(const char* filename, const TiffImage* img, bool littleEndian) {
     if (!img || !img->directories || !img->data || !img->isValid) return 1;
 
     FILE* fp = fopen(filename, "wb");
     if (!fp) return 1;
 
     // Write header
-    writeBytes(fp, littleEndian ? 0x4949 : 0x4D4D, 2, 1);  // Byte order marker
-    writeBytes(fp, 42, 2, littleEndian);                    // TIFF version
+    vs__tiff_write_bytes(fp, littleEndian ? 0x4949 : 0x4D4D, 2, 1);  // Byte order marker
+    vs__tiff_write_bytes(fp, 42, 2, littleEndian);                    // TIFF version
 
     uint32_t ifdOffset = 8;  // Start first IFD after header
-    writeBytes(fp, ifdOffset, 4, littleEndian);
+    vs__tiff_write_bytes(fp, ifdOffset, 4, littleEndian);
 
     // Calculate space needed for string and rational values
     uint32_t extraDataOffset = ifdOffset;
@@ -3819,56 +3816,56 @@ int writeTIFF(const char* filename, const TiffImage* img, bool littleEndian) {
         fseek(fp, ifdOffset, SEEK_SET);
 
         // Write number of directory entries
-        writeBytes(fp, 17, 2, littleEndian);  // Number of IFD entries
+        vs__tiff_write_bytes(fp, 17, 2, littleEndian);  // Number of IFD entries
 
         // Write directory entries
-        writeIFDEntry(fp, TIFFTAG_SUBFILETYPE, TIFF_LONG, 1, dir->subfileType, littleEndian);
-        writeIFDEntry(fp, TIFFTAG_IMAGEWIDTH, TIFF_LONG, 1, dir->width, littleEndian);
-        writeIFDEntry(fp, TIFFTAG_IMAGELENGTH, TIFF_LONG, 1, dir->height, littleEndian);
-        writeIFDEntry(fp, TIFFTAG_BITSPERSAMPLE, TIFF_SHORT, 1, dir->bitsPerSample, littleEndian);
-        writeIFDEntry(fp, TIFFTAG_COMPRESSION, TIFF_SHORT, 1, dir->compression, littleEndian);
-        writeIFDEntry(fp, TIFFTAG_PHOTOMETRIC, TIFF_SHORT, 1, dir->photometric, littleEndian);
-        writeIFDEntry(fp, TIFFTAG_SAMPLESPERPIXEL, TIFF_SHORT, 1, dir->samplesPerPixel, littleEndian);
-        writeIFDEntry(fp, TIFFTAG_ROWSPERSTRIP, TIFF_LONG, 1, dir->rowsPerStrip, littleEndian);
-        writeIFDEntry(fp, TIFFTAG_PLANARCONFIG, TIFF_SHORT, 1, dir->planarConfig, littleEndian);
-        writeIFDEntry(fp, TIFFTAG_SAMPLEFORMAT, TIFF_SHORT, 1, dir->sampleFormat, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_SUBFILETYPE, TIFF_LONG, 1, dir->subfileType, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_IMAGEWIDTH, TIFF_LONG, 1, dir->width, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_IMAGELENGTH, TIFF_LONG, 1, dir->height, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_BITSPERSAMPLE, TIFF_SHORT, 1, dir->bitsPerSample, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_COMPRESSION, TIFF_SHORT, 1, dir->compression, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_PHOTOMETRIC, TIFF_SHORT, 1, dir->photometric, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_SAMPLESPERPIXEL, TIFF_SHORT, 1, dir->samplesPerPixel, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_ROWSPERSTRIP, TIFF_LONG, 1, dir->rowsPerStrip, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_PLANARCONFIG, TIFF_SHORT, 1, dir->planarConfig, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_SAMPLEFORMAT, TIFF_SHORT, 1, dir->sampleFormat, littleEndian);
 
         // Write resolution entries
-        writeIFDEntry(fp, TIFFTAG_XRESOLUTION, TIFF_RATIONAL, 1, extraDataOffset, littleEndian);
-        writeRational(fp, dir->xResolution, extraDataOffset, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_XRESOLUTION, TIFF_RATIONAL, 1, extraDataOffset, littleEndian);
+        vs__tiff_write_rational(fp, dir->xResolution, extraDataOffset, littleEndian);
         extraDataOffset += 8;
 
-        writeIFDEntry(fp, TIFFTAG_YRESOLUTION, TIFF_RATIONAL, 1, extraDataOffset, littleEndian);
-        writeRational(fp, dir->yResolution, extraDataOffset, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_YRESOLUTION, TIFF_RATIONAL, 1, extraDataOffset, littleEndian);
+        vs__tiff_write_rational(fp, dir->yResolution, extraDataOffset, littleEndian);
         extraDataOffset += 8;
 
-        writeIFDEntry(fp, TIFFTAG_RESOLUTIONUNIT, TIFF_SHORT, 1, dir->resolutionUnit, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_RESOLUTIONUNIT, TIFF_SHORT, 1, dir->resolutionUnit, littleEndian);
 
         // Write metadata strings if present
         if (dir->imageDescription[0]) {
             size_t len = strlen(dir->imageDescription) + 1;
-            writeIFDEntry(fp, TIFFTAG_IMAGEDESCRIPTION, TIFF_ASCII, len, extraDataOffset, littleEndian);
-            writeString(fp, dir->imageDescription, extraDataOffset);
+            vs__tiff_write_ifd_entry(fp, TIFFTAG_IMAGEDESCRIPTION, TIFF_ASCII, len, extraDataOffset, littleEndian);
+            vs__tiff_write_string(fp, dir->imageDescription, extraDataOffset);
             extraDataOffset += len;
         }
 
         if (dir->software[0]) {
             size_t len = strlen(dir->software) + 1;
-            writeIFDEntry(fp, TIFFTAG_SOFTWARE, TIFF_ASCII, len, extraDataOffset, littleEndian);
-            writeString(fp, dir->software, extraDataOffset);
+            vs__tiff_write_ifd_entry(fp, TIFFTAG_SOFTWARE, TIFF_ASCII, len, extraDataOffset, littleEndian);
+            vs__tiff_write_string(fp, dir->software, extraDataOffset);
             extraDataOffset += len;
         }
 
         if (dir->dateTime[0]) {
-            writeIFDEntry(fp, TIFFTAG_DATETIME, TIFF_ASCII, 20, extraDataOffset, littleEndian);
-            writeString(fp, dir->dateTime, extraDataOffset);
+            vs__tiff_write_ifd_entry(fp, TIFFTAG_DATETIME, TIFF_ASCII, 20, extraDataOffset, littleEndian);
+            vs__tiff_write_string(fp, dir->dateTime, extraDataOffset);
             extraDataOffset += 20;
         }
 
         // Calculate strip size and write strip information
         size_t stripSize = dir->width * dir->height * (dir->bitsPerSample / 8);
-        writeIFDEntry(fp, TIFFTAG_STRIPOFFSETS, TIFF_LONG, 1, extraDataOffset, littleEndian);
-        writeIFDEntry(fp, TIFFTAG_STRIPBYTECOUNTS, TIFF_LONG, 1, stripSize, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_STRIPOFFSETS, TIFF_LONG, 1, extraDataOffset, littleEndian);
+        vs__tiff_write_ifd_entry(fp, TIFFTAG_STRIPBYTECOUNTS, TIFF_LONG, 1, stripSize, littleEndian);
 
         // Write image data
         fseek(fp, extraDataOffset, SEEK_SET);
@@ -3878,7 +3875,7 @@ int writeTIFF(const char* filename, const TiffImage* img, bool littleEndian) {
 
         // Write next IFD offset or 0 if last directory
         uint32_t nextIFD = (d < img->depth - 1) ? extraDataOffset : 0;
-        writeBytes(fp, nextIFD, 4, littleEndian);
+        vs__tiff_write_bytes(fp, nextIFD, 4, littleEndian);
 
         ifdOffset = nextIFD;
     }
@@ -3887,7 +3884,7 @@ int writeTIFF(const char* filename, const TiffImage* img, bool littleEndian) {
     return 0;
 }
 
-TiffImage* createTIFF(uint32_t width, uint32_t height, uint16_t depth,
+TiffImage* vs_create_tiff(uint32_t width, uint32_t height, uint16_t depth,
                            uint16_t bitsPerSample) {
     TiffImage* img = calloc(1, sizeof(TiffImage));
     if (!img) return NULL;
@@ -3924,7 +3921,7 @@ TiffImage* createTIFF(uint32_t width, uint32_t height, uint16_t depth,
         dir->resolutionUnit = 2;  // ?
         dir->subfileType = 0;
 
-        getCurrentDateTime(dir->dateTime);
+        vs__tiff_current_date_time(dir->dateTime);
     }
 
     img->isValid = true;
@@ -3934,7 +3931,7 @@ TiffImage* createTIFF(uint32_t width, uint32_t height, uint16_t depth,
         
 // vcps
 
-int read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count) {
+int vs__vcps_read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count) {
     // Fast path: types match, direct read
     if (strcmp(src_type, dst_type) == 0) {
         size_t element_size = strcmp(src_type, "float") == 0 ? sizeof(f32) : sizeof(f64);
@@ -3974,7 +3971,7 @@ int read_binary_data(FILE* fp, void* out_data, const char* src_type, const char*
     return 1;
 }
 
-int write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count) {
+int vs__vcps_write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count) {
     // Fast path: types match, direct write
     if (strcmp(src_type, dst_type) == 0) {
         size_t element_size = strcmp(src_type, "float") == 0 ? sizeof(f32) : sizeof(f64);
@@ -4013,7 +4010,7 @@ int write_binary_data(FILE* fp, const void* data, const char* src_type, const ch
 }
 
 
-int read_vcps(const char* filename,
+int vs_vcps_read(const char* filename,
               size_t* width, size_t* height, size_t* dim,
               void* data, const char* dst_type) {
     if (!dst_type || (strcmp(dst_type, "float") != 0 && strcmp(dst_type, "double") != 0)) {
@@ -4038,7 +4035,7 @@ int read_vcps(const char* filename,
     *dim = 0;
 
     while (fgets(line, sizeof(line), fp)) {
-        trim(line);
+        vs__trim(line);
 
         if (strcmp(line, "<>") == 0) {
             header_complete = 1;
@@ -4073,13 +4070,13 @@ int read_vcps(const char* filename,
     }
 
     size_t total_points = (*width) * (*height) * (*dim);
-    int status = read_binary_data(fp, data, src_type, dst_type, total_points);
+    int status = vs__vcps_read_binary_data(fp, data, src_type, dst_type, total_points);
 
     fclose(fp);
     return status;
 }
 
-int write_vcps(const char* filename,
+int vs_vcps_write(const char* filename,
                size_t width, size_t height, size_t dim,
                const void* data, const char* src_type, const char* dst_type) {
     if (!src_type || !dst_type ||
@@ -4107,7 +4104,7 @@ int write_vcps(const char* filename,
     if (!fp) return 1;
 
     size_t total_points = width * height * dim;
-    int status = write_binary_data(fp, data, src_type, dst_type, total_points);
+    int status = vs__vcps_write_binary_data(fp, data, src_type, dst_type, total_points);
 
     fclose(fp);
     return status;
@@ -4115,7 +4112,7 @@ int write_vcps(const char* filename,
 
 // vol
 
-volume *volume_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool uses_3d_tif, char* cache_dir, u64 vol_id) {
+volume *vs_vol_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool uses_3d_tif, char* cache_dir, u64 vol_id) {
   //only 3d tiff chunks are currently supported
   assert(is_tif_stack && uses_3d_tif);
 
@@ -4126,7 +4123,7 @@ volume *volume_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool use
   }
 
   if (cache_dir != NULL) {
-    if (mkdir_p(cache_dir)) {
+    if (vs__mkdir_p(cache_dir)) {
       printf("Could not mkdir %s\n",cache_dir);
       return NULL;
     }
@@ -4136,7 +4133,7 @@ volume *volume_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool use
   return ret;
 }
 
-chunk* volume_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]) {
+chunk* vs_vol_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]) {
   // stitching across chunks, be them tiff or zarr chunks, isn't just yet supported
   // so for now we'll just force the position to be a multiple of 500
   // and for dims to be <= 500
@@ -4159,7 +4156,7 @@ chunk* volume_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[sta
   void* buf;
   printf("downloading data from %s\n",url);
 
-  long len = download(url, &buf);
+  long len = vs_download(url, &buf);
   if (len < 0) {
       // download failed
   }
@@ -4192,7 +4189,7 @@ chunk* volume_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[sta
 
 #ifdef VESUVIUS_ZARR_IMPL
 
-struct json_value_s *find_value(const struct json_object_s *obj, const char *key) {
+struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key) {
   struct json_object_element_s *element = obj->start;
   while (element) {
     if (element->name->string_size == strlen(key) &&
@@ -4204,7 +4201,7 @@ struct json_value_s *find_value(const struct json_object_s *obj, const char *key
   return NULL;
 }
 
-void parse_int32_array(struct json_array_s *array, int32_t output[3]) {
+void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]) {
   struct json_array_element_s *element = array->start;
   for (int i = 0; i < 3 && element; i++) {
     struct json_number_s *num = element->value->payload;
@@ -4213,7 +4210,7 @@ void parse_int32_array(struct json_array_s *array, int32_t output[3]) {
   }
 }
 
-int parse_zarr_metadata(const char *json_string, zarr_metadata *metadata) {
+int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metadata) {
   struct json_value_s *root = json_parse(json_string, strlen(json_string));
   if (!root) {
     printf("Failed to parse JSON!\n");
@@ -4222,70 +4219,70 @@ int parse_zarr_metadata(const char *json_string, zarr_metadata *metadata) {
 
   struct json_object_s *object = root->payload;
 
-  struct json_value_s *shapes_value = find_value(object, "shape");
+  struct json_value_s *shapes_value = vs__json_find_value(object, "shape");
   if (shapes_value && shapes_value->type == json_type_array) {
-    parse_int32_array(shapes_value->payload, metadata->shape);
+    vs__json_parse_int32_array(shapes_value->payload, metadata->shape);
   }
 
-  struct json_value_s *chunks_value = find_value(object, "chunks");
+  struct json_value_s *chunks_value = vs__json_find_value(object, "chunks");
   if (chunks_value && chunks_value->type == json_type_array) {
-    parse_int32_array(chunks_value->payload, metadata->chunks);
+    vs__json_parse_int32_array(chunks_value->payload, metadata->chunks);
   }
 
-  struct json_value_s *compressor_value = find_value(object, "compressor");
+  struct json_value_s *compressor_value = vs__json_find_value(object, "compressor");
   if (compressor_value && compressor_value->type == json_type_object) {
     struct json_object_s *compressor = compressor_value->payload;
 
-    struct json_value_s *blocksize = find_value(compressor, "blocksize");
+    struct json_value_s *blocksize = vs__json_find_value(compressor, "blocksize");
     if (blocksize && blocksize->type == json_type_number) {
       struct json_number_s *num = blocksize->payload;
       metadata->compressor.blocksize = (int32_t) strtol(num->number, NULL, 10);
     }
 
-    struct json_value_s *clevel = find_value(compressor, "clevel");
+    struct json_value_s *clevel = vs__json_find_value(compressor, "clevel");
     if (clevel && clevel->type == json_type_number) {
       struct json_number_s *num = clevel->payload;
       metadata->compressor.clevel = (int32_t) strtol(num->number, NULL, 10);
     }
 
-    struct json_value_s *cname = find_value(compressor, "cname");
+    struct json_value_s *cname = vs__json_find_value(compressor, "cname");
     if (cname && cname->type == json_type_string) {
       struct json_string_s *str = cname->payload;
       strncpy(metadata->compressor.cname, str->string, sizeof(metadata->compressor.cname) - 1);
     }
 
-    struct json_value_s *id = find_value(compressor, "id");
+    struct json_value_s *id = vs__json_find_value(compressor, "id");
     if (id && id->type == json_type_string) {
       struct json_string_s *str = id->payload;
       strncpy(metadata->compressor.id, str->string, sizeof(metadata->compressor.id) - 1);
     }
 
-    struct json_value_s *shuffle = find_value(compressor, "shuffle");
+    struct json_value_s *shuffle = vs__json_find_value(compressor, "shuffle");
     if (shuffle && shuffle->type == json_type_number) {
       struct json_number_s *num = shuffle->payload;
       metadata->compressor.shuffle = (int32_t) strtol(num->number, NULL, 10);
     }
   }
 
-  struct json_value_s *dtype_value = find_value(object, "dtype");
+  struct json_value_s *dtype_value = vs__json_find_value(object, "dtype");
   if (dtype_value && dtype_value->type == json_type_string) {
     struct json_string_s *str = dtype_value->payload;
     strncpy(metadata->dtype, str->string, sizeof(metadata->dtype) - 1);
   }
 
-  struct json_value_s *fill_value = find_value(object, "fill_value");
+  struct json_value_s *fill_value = vs__json_find_value(object, "fill_value");
   if (fill_value && fill_value->type == json_type_number) {
     struct json_number_s *num = fill_value->payload;
     metadata->fill_value = (int32_t) strtol(num->number, NULL, 10);
   }
 
-  struct json_value_s *order_value = find_value(object, "order");
+  struct json_value_s *order_value = vs__json_find_value(object, "order");
   if (order_value && order_value->type == json_type_string) {
     struct json_string_s *str = order_value->payload;
     metadata->order = str->string[0];
   }
 
-  struct json_value_s *format_value = find_value(object, "zarr_format");
+  struct json_value_s *format_value = vs__json_find_value(object, "zarr_format");
   if (format_value && format_value->type == json_type_number) {
     struct json_number_s *num = format_value->payload;
     metadata->zarr_format = (int32_t) strtol(num->number, NULL, 10);
@@ -4295,7 +4292,7 @@ int parse_zarr_metadata(const char *json_string, zarr_metadata *metadata) {
   return 1;
 }
 
-zarr_metadata parse_zarray(char *path) {
+zarr_metadata vs_zarr_parse_zarray(char *path) {
   zarr_metadata metadata = {0};
 
   FILE *fp = fopen(path, "rt");
@@ -4312,7 +4309,7 @@ zarr_metadata parse_zarray(char *path) {
   fread(buf, 1, size, fp);
 
 
-  if (parse_zarr_metadata(buf, &metadata)) {
+  if (vs__zarr_parse_metadata(buf, &metadata)) {
     printf("Shape: [%d, %d, %d]\n",
            metadata.shape[0], metadata.shape[1], metadata.shape[2]);
     printf("Chunks: [%d, %d, %d]\n",
@@ -4335,8 +4332,8 @@ zarr_metadata parse_zarray(char *path) {
 #endif
 
 //vesuvius specific
-chunk *tiff_to_chunk(const char *tiffpath) {
-  TiffImage *img = readTIFF(tiffpath);
+chunk *vs_tiff_to_chunk(const char *tiffpath) {
+  TiffImage *img = vs_tiff_read(tiffpath);
   if (!img || !img->isValid) {
     assert(false);
     return NULL;
@@ -4349,16 +4346,16 @@ chunk *tiff_to_chunk(const char *tiffpath) {
 
   //TODO: can we assume that all 3D tiffs have the same x,y dimensions for all slices? because we are right here
   s32 dims[3] = {img->depth, img->directories[0].height, img->directories[0].width};
-  chunk *ret = chunk_new(dims);
+  chunk *ret = vs_chunk_new(dims);
   for (s32 z = 0; z < dims[0]; z++) {
-    void *buf = readTIFFDirectoryData(img, z);
+    void *buf = vs_tiff_read_directory_data(img, z);
     for (s32 y = 0; y < dims[1]; y++) {
       for (s32 x = 0; x < dims[2]; x++) {
         if (img->directories[z].bitsPerSample == 8) {
-          ret->data[z * dims[1] * dims[2] + y * dims[2] + x] = getTIFFPixel8FromBuffer(
+          ret->data[z * dims[1] * dims[2] + y * dims[2] + x] = vs_tiff_pixel8(
             buf, y, x, img->directories[z].width);
         } else if (img->directories[z].bitsPerSample == 16) {
-          ret->data[z * dims[1] * dims[2] + y * dims[2] + x] = getTIFFPixel16FromBuffer(
+          ret->data[z * dims[1] * dims[2] + y * dims[2] + x] = vs_tiff_pixel16(
             buf, y, x, img->directories[z].width);
         }
       }
@@ -4368,8 +4365,8 @@ chunk *tiff_to_chunk(const char *tiffpath) {
 }
 
 
-slice *tiff_to_slice(const char *tiffpath, int index) {
-  TiffImage *img = readTIFF(tiffpath);
+slice *vs_tiff_to_slice(const char *tiffpath, int index) {
+  TiffImage *img = vs_tiff_read(tiffpath);
   if (!img || !img->isValid) {
     assert(false);
     return NULL;
@@ -4380,15 +4377,15 @@ slice *tiff_to_slice(const char *tiffpath, int index) {
   }
 
   s32 dims[2] = {img->directories[0].height, img->directories[0].width};
-  slice *ret = slice_new(dims);
+  slice *ret = vs_slice_new(dims);
 
-  void *buf = readTIFFDirectoryData(img, index);
+  void *buf = vs_tiff_read_directory_data(img, index);
   for (s32 y = 0; y < dims[0]; y++) {
     for (s32 x = 0; x < dims[1]; x++) {
       if (img->directories[index].bitsPerSample == 8) {
-        ret->data[y * dims[1] + x] = getTIFFPixel8FromBuffer(buf, y, x, img->directories[index].width);
+        ret->data[y * dims[1] + x] = vs_tiff_pixel8(buf, y, x, img->directories[index].width);
       } else if (img->directories[index].bitsPerSample == 16) {
-        ret->data[y * dims[1] + x] = getTIFFPixel16FromBuffer(buf, y, x, img->directories[index].width);
+        ret->data[y * dims[1] + x] = vs_tiff_pixel16(buf, y, x, img->directories[index].width);
       }
     }
   }
@@ -4397,7 +4394,7 @@ slice *tiff_to_slice(const char *tiffpath, int index) {
 
 
 
-int slice_fill(slice *slice, volume *vol, int start[static 2], int axis) {
+int vs_slice_fill(slice *slice, volume *vol, int start[static 2], int axis) {
   assert(axis == 'z' || axis == 'y' || axis == 'x');
   if (start[0] + slice->dims[0] < 0 || start[0] + slice->dims[0] > vol->dims[0]) {
     assert(false);
@@ -4417,7 +4414,7 @@ int slice_fill(slice *slice, volume *vol, int start[static 2], int axis) {
   return 0;
 }
 
-int chunk_fill(chunk *chunk, volume *vol, int start[static 3]) {
+int vs_chunk_fill(chunk *chunk, volume *vol, int start[static 3]) {
   if (start[0] + chunk->dims[0] < 0 || start[0] + chunk->dims[0] > vol->dims[0]) {
     assert(false);
     return 1;
