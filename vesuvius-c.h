@@ -849,6 +849,7 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include <unistd.h>
 
 #ifdef VESUVIUS_CURL_IMPL
 #include <curl/curl.h>
@@ -1044,12 +1045,12 @@ typedef struct zarr_metadata {
 #endif
 
 
-#ifndef VESUVIUS_IMPL
 // utils
 void vs__trim(char* str);
 void vs__skip_line(FILE *fp);
 bool vs__str_starts_with(const char* str, const char* prefix);
 int vs__mkdir_p(const char* path);
+bool vs__path_exists(const char *path);
 
 // chamfer
 f32 vs__squared_distance(const f32* p1, const f32* p2);
@@ -1123,12 +1124,12 @@ s32 vs_march_cubes(const f32* values,
                 s32* out_index_count);
 
 // nrrd
-bool vs__nrrd_parse_sizes(char* value, nrrd* nrrd);
-bool vs__nrrd_parse_space_directions(char* value, nrrd* nrrd);
-bool vs__nrrd_parse_space_origin(char* value, nrrd* nrrd);
+int vs__nrrd_parse_sizes(char* value, nrrd* nrrd);
+int vs__nrrd_parse_space_directions(char* value, nrrd* nrrd);
+int vs__nrrd_parse_space_origin(char* value, nrrd* nrrd);
 size_t vs__nrrd_get_type_size(const char* type);
-bool vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd);
-bool vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd);
+int vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd);
+int vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd);
 nrrd* vs__nrrd_read(const char* filename);
 void vs__nrrd_free(nrrd* nrrd);
 
@@ -1141,13 +1142,13 @@ s32 vs_write_obj(const char* filename,
              s32 vertex_count, s32 index_count);
 
 // ply
-s32 vs_write_ply(const char *filename,
+s32 vs_ply_write(const char *filename,
                     const f32 *vertices,
                     const f32 *normals, // can be NULL if no normals
                     const s32 *indices,
                     s32 vertex_count,
                     s32 index_count);
-s32 vs_read_ply(const char *filename,
+s32 vs_ply_read(const char *filename,
                           f32 **out_vertices,
                           f32 **out_normals,
                           s32 **out_indices,
@@ -1220,7 +1221,7 @@ slice *vs_tiff_to_slice(const char *tiffpath, int index);
 int vs_slice_fill(slice *slice, volume *vol, int start[static 2], int axis);
 int vs_chunk_fill(chunk *chunk, volume *vol, int start[static 3]);
 
-#else //ifdef VESUVIUS_IMPL
+#ifdef VESUVIUS_IMPL
 
 void vs__trim(char* str) {
   char* end;
@@ -1263,6 +1264,10 @@ int vs__mkdir_p(const char* path) {
 #else
   return (mkdir(tmp, 0755) == 0 || errno == EEXIST) ? 0 : 1;
 #endif
+}
+
+bool vs__path_exists(const char *path) {
+    return access(path, F_OK) == 0 ? true : false;
 }
 
 // chamfer
@@ -2588,26 +2593,26 @@ nrrd* vs__nrrd_read(const char* filename) {
         return NULL;
     }
 
-    nrrd* nrrd = calloc(1, sizeof(nrrd));
-    if (!nrrd) {
+    nrrd* ret = calloc(1, sizeof(nrrd));
+    if (!ret) {
 
         printf("could not allocate ram for nrrd\n");
         fclose(fp);
         return NULL;
     }
-    nrrd->is_valid = true;
+    ret->is_valid = true;
 
     char line[MAX_LINE_LENGTH];
     if (!fgets(line, sizeof(line), fp)) {
         printf("Failed to read magic");
-        nrrd->is_valid = false;
+        ret->is_valid = false;
         goto cleanup;
     }
     vs__trim(line);
 
     if (!vs__str_starts_with(line, "NRRD")) {
         printf("Not a NRRD file: %s", line);
-        nrrd->is_valid = false;
+        ret->is_valid = false;
         goto cleanup;
     }
 
@@ -2636,90 +2641,90 @@ nrrd* vs__nrrd_read(const char* filename) {
         vs__trim(value);
 
         if (strcmp(key, "type") == 0) {
-            strncpy(nrrd->type, value, sizeof(nrrd->type)-1);
+            strncpy(ret->type, value, sizeof(ret->type)-1);
         }
         else if (strcmp(key, "dimension") == 0) {
-            nrrd->dimension = atoi(value);
-            if (nrrd->dimension <= 0 || nrrd->dimension > 16) {
-                printf("Invalid dimension: %d", nrrd->dimension);
-                nrrd->is_valid = false;
+            ret->dimension = atoi(value);
+            if (ret->dimension <= 0 || ret->dimension > 16) {
+                printf("Invalid dimension: %d", ret->dimension);
+                ret->is_valid = false;
                 goto cleanup;
             }
         }
         else if (strcmp(key, "space") == 0) {
-            strncpy(nrrd->space, value, sizeof(nrrd->space)-1);
+            strncpy(ret->space, value, sizeof(ret->space)-1);
         }
         else if (strcmp(key, "sizes") == 0) {
-            if (!vs__nrrd_parse_sizes(value, nrrd)) {
-                nrrd->is_valid = false;
+            if (!vs__nrrd_parse_sizes(value, ret)) {
+                ret->is_valid = false;
                 goto cleanup;
             }
         }
         else if (strcmp(key, "space directions") == 0) {
-            if (!vs__nrrd_parse_space_directions(value, nrrd)) {
-                nrrd->is_valid = false;
+            if (!vs__nrrd_parse_space_directions(value, ret)) {
+                ret->is_valid = false;
                 goto cleanup;
             }
         }
         else if (strcmp(key, "endian") == 0) {
-            strncpy(nrrd->endian, value, sizeof(nrrd->endian)-1);
+            strncpy(ret->endian, value, sizeof(ret->endian)-1);
         }
         else if (strcmp(key, "encoding") == 0) {
-            strncpy(nrrd->encoding, value, sizeof(nrrd->encoding)-1);
+            strncpy(ret->encoding, value, sizeof(ret->encoding)-1);
         }
         else if (strcmp(key, "space origin") == 0) {
-            if (!vs__nrrd_parse_space_origin(value, nrrd)) {
-                nrrd->is_valid = false;
+            if (!vs__nrrd_parse_space_origin(value, ret)) {
+                ret->is_valid = false;
                 goto cleanup;
             }
         }
     }
 
-    size_t type_size = vs__nrrd_get_type_size(nrrd->type);
+    size_t type_size = vs__nrrd_get_type_size(ret->type);
     if (type_size == 0) {
-        printf("Unsupported type: %s", nrrd->type);
-        nrrd->is_valid = false;
+        printf("Unsupported type: %s", ret->type);
+        ret->is_valid = false;
         goto cleanup;
     }
 
-    nrrd->data_size = type_size;
-    for (s32 i = 0; i < nrrd->dimension; i++) {
-        nrrd->data_size *= nrrd->sizes[i];
+    ret->data_size = type_size;
+    for (s32 i = 0; i < ret->dimension; i++) {
+        ret->data_size *= ret->sizes[i];
     }
 
-    nrrd->data = malloc(nrrd->data_size);
-    if (!nrrd->data) {
-        printf("Failed to allocate %zu bytes", nrrd->data_size);
-        nrrd->is_valid = false;
+    ret->data = malloc(ret->data_size);
+    if (!ret->data) {
+        printf("Failed to allocate %zu bytes", ret->data_size);
+        ret->is_valid = false;
         goto cleanup;
     }
 
-    if (strcmp(nrrd->encoding, "raw") == 0) {
-        if (!vs__nrrd_read_raw_data(fp, nrrd)) {
-            nrrd->is_valid = false;
+    if (strcmp(ret->encoding, "raw") == 0) {
+        if (!vs__nrrd_read_raw_data(fp, ret)) {
+            ret->is_valid = false;
             goto cleanup;
         }
     }
-    else if (strcmp(nrrd->encoding, "gzip") == 0) {
-        if (!vs__nrrd_read_gzip_data(fp, nrrd)) {
-            nrrd->is_valid = false;
+    else if (strcmp(ret->encoding, "gzip") == 0) {
+        if (!vs__nrrd_read_gzip_data(fp, ret)) {
+            ret->is_valid = false;
             goto cleanup;
         }
     }
     else {
-        printf("Unsupported encoding: %s", nrrd->encoding);
-        nrrd->is_valid = false;
+        printf("Unsupported encoding: %s", ret->encoding);
+        ret->is_valid = false;
         goto cleanup;
     }
 
 cleanup:
     fclose(fp);
-    if (!nrrd->is_valid) {
-        if (nrrd->data) free(nrrd->data);
-        free(nrrd);
+    if (!ret->is_valid) {
+        if (ret->data) free(ret->data);
+        free(ret);
         return NULL;
     }
-    return nrrd;
+    return ret;
 }
 
 void vs__nrrd_free(nrrd* nrrd) {
@@ -2843,7 +2848,7 @@ s32 vs_write_obj(const char* filename,
 //TODO: most the ply files I come across use x y z order. should we swap the order here so they
 // end up in the data as z y x?
 
-s32 vs_write_ply(const char *filename,
+s32 vs_ply_write(const char *filename,
                     const f32 *vertices,
                     const f32 *normals, // can be NULL if no normals
                     const s32 *indices,
@@ -2904,7 +2909,7 @@ s32 vs_write_ply(const char *filename,
   return 0;
 }
 
-s32 vs_read_ply(const char *filename,
+s32 vs_ply_read(const char *filename,
                           f32 **out_vertices,
                           f32 **out_normals,
                           s32 **out_indices,
@@ -3427,6 +3432,9 @@ void vs__tiff_read_ifd_entry(FILE* fp, DirectoryInfo* dir, int littleEndian, lon
             break;
         case TIFFTAG_STRIPBYTECOUNTS:
             dir->stripInfo.byteCount = (type == TIFF_SHORT) ? (uint16_t)valueOffset : valueOffset;
+            break;
+        default:
+            assert(false);
             break;
     }
 }
@@ -4151,36 +4159,49 @@ chunk* vs_vol_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[sta
 
   char filename[1024] = {'\0'};
   sprintf(filename, "cell_yxz_%03d_%03d_%03d.tif",y,x,z);
-  char url[1024] = {'\0'};
-  sprintf(url, "https://dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/volume_grids/20230205180739/%s",filename);
-  void* buf;
-  printf("downloading data from %s\n",url);
+  char filepath[1024] = {'\0'};
+  sprintf(filepath, "%s/%s",vol->cache_dir, filename);
 
-  long len = vs_download(url, &buf);
-  if (len < 0) {
-      // download failed
-  }
-  printf("len %d\n",(s32)len);
-  //todo: is this applicable for all of our 3d tiff files from the data server?
-  if (len != 250073508 ) {
-    printf("warning! did not downloaod the seemingly correct length from %s\n",url);
+  if (vs__path_exists(filepath)) {
+      chunk* ret = vs_tiff_to_chunk(filepath);
+      return ret;
+  } else {
+#ifdef VESUVIUS_CURL_IMPL
+      char url[1024] = {'\0'};
+      void* buf;
+
+      sprintf(url, "https://dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/volume_grids/20230205180739/%s",filename);
+
+      printf("downloading data from %s\n",url);
+
+      long len = vs_download(url, &buf);
+      if (len < 0) {
+          // download failed
+          return NULL;
+      }
+      printf("len %d\n",(s32)len);
+      //todo: is this applicable for all of our 3d tiff files from the data server?
+      if (len != 250073508 ) {
+          printf("warning! did not download the seemingly correct length from %s\n",url);
+      }
+
+      if (vol->cache_dir != NULL) {
+
+          printf("saving data to %s\n",filepath);
+          FILE* fp = fopen(filepath, "wb");
+          if (fp == NULL) {
+              printf("could not open %s for writing\n",filepath);
+              return NULL;
+          }
+          size_t sz = fwrite(buf, 1, len, fp);
+          printf("wrote: %lld bytes to %s\n",sz, filepath);
+          if (sz != len) {
+              printf("could not write all data to %s\n",filepath);
+          }
+      }
+#endif
   }
 
-  if (vol->cache_dir != NULL) {
-    char outpath[1024] = {'\0'};
-    sprintf(outpath, "%s/%s",vol->cache_dir, filename);
-    printf("saving data to %s\n",outpath);
-    FILE* fp = fopen(outpath, "wb");
-    if (fp == NULL) {
-      printf("could not open %s for writing\n",outpath);
-      return NULL;
-    }
-    size_t sz = fwrite(buf, 1, len, fp);
-    printf("wrote: %lld bytes to %s\n",sz, outpath);
-    if (sz != len) {
-      printf("could not write all data to %s\n",outpath);
-    }
-  }
   return NULL;
 }
 

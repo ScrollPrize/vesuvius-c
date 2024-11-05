@@ -22,27 +22,27 @@ int testcurl() {
 int testhistogram() {
   printf("%s\n", __FUNCTION__);
 
-  chunk* mychunk = tiff_to_chunk("./img/example_3d.tif");
+  chunk* mychunk = vs_tiff_to_chunk("./img/example_3d.tif");
   if (mychunk == NULL) { return 1; }
-  slice* myslice = tiff_to_slice("./img/example_3d.tif", 0);
+  slice* myslice = vs_tiff_to_slice("./img/example_3d.tif", 0);
   if (myslice == NULL) { return 1; }
-  histogram* slice_hist = slice_histogram(myslice->data, myslice->dims[0], myslice->dims[1], 256);
+  histogram* slice_hist = vs_slice_histogram(myslice->data, myslice->dims[0], myslice->dims[1], 256);
   if (slice_hist == NULL) { return 1; }
-  histogram* chunk_hist = chunk_histogram(mychunk->data, mychunk->dims[0], mychunk->dims[1], mychunk->dims[2], 256);
+  histogram* chunk_hist = vs_chunk_histogram(mychunk->data, mychunk->dims[0], mychunk->dims[1], mychunk->dims[2], 256);
   if (chunk_hist == NULL) { return 1; }
-  hist_stats stats = calculate_histogram_stats(slice_hist);
+  hist_stats stats = vs_calculate_histogram_stats(slice_hist);
   printf("Mean: %.2f\n", stats.mean);
   printf("Median: %.2f\n", stats.median);
   printf("Mode: %.2f (count: %u)\n", stats.mode, stats.mode_count);
   printf("Standard Deviation: %.2f\n", stats.std_dev);
 
-  if (write_histogram_to_csv(slice_hist, "slice_histogram.csv")) { return 1; }
-  if (write_histogram_to_csv(chunk_hist, "chunk_histogram.csv")) { return 1; }
+  if (vs_write_histogram_to_csv(slice_hist, "slice_histogram.csv")) { return 1; }
+  if (vs_write_histogram_to_csv(chunk_hist, "chunk_histogram.csv")) { return 1; }
 
-  histogram_free(slice_hist);
-  histogram_free(chunk_hist);
-  chunk_free(mychunk);
-  slice_free(myslice);
+  vs_histogram_free(slice_hist);
+  vs_histogram_free(chunk_hist);
+  vs_chunk_free(mychunk);
+  vs_slice_free(myslice);
   return 0;
 }
 
@@ -93,41 +93,41 @@ int testzarr() {
 int testmesher() {
   printf("%s\n", __FUNCTION__);
 
-  chunk* mychunk = tiff_to_chunk("./img/example_3d.tif");
+  chunk* mychunk = vs_tiff_to_chunk("./img/example_3d.tif");
   if (mychunk == NULL) { return 1; }
-  chunk* smallerchunk = sumpool(mychunk, 2, 2);
+  chunk* smallerchunk = vs_sumpool(mychunk, 2, 2);
   if (smallerchunk == NULL) { return 1; }
-  chunk* rescaled = normalize_chunk(smallerchunk);
+  chunk* rescaled = vs_normalize_chunk(smallerchunk);
   if (rescaled == NULL) { return 1; }
   float* vertices;
   int* indices;
   int vertex_count, indices_count;
-  int ret = march_cubes(rescaled->data, rescaled->dims[0], rescaled->dims[1], rescaled->dims[2], 0.5f, &vertices,
+  int ret = vs_march_cubes(rescaled->data, rescaled->dims[0], rescaled->dims[1], rescaled->dims[2], 0.5f, &vertices,
                         &indices, &vertex_count, &indices_count);
   if (ret != 0) { return 1; }
-  ret = write_ply("mymesh.ply", vertices,NULL, indices, vertex_count, indices_count);
+  ret = vs_write_ply("mymesh.ply", vertices,NULL, indices, vertex_count, indices_count);
   if (ret != 0) { return 1; }
-  chunk_free(rescaled);
-  chunk_free(mychunk);
-  chunk_free(smallerchunk);
+  vs_chunk_free(rescaled);
+  vs_chunk_free(mychunk);
+  vs_chunk_free(smallerchunk);
   return 0;
 }
 
 int testmath() {
   printf("%s\n", __FUNCTION__);
 
-  chunk* mychunk = chunk_new((s32[3]){128, 128, 128});
+  chunk* mychunk = vs_chunk_new((s32[3]){128, 128, 128});
   if (mychunk == NULL) { return 1; }
   for (int z = 0; z < 128; z++) {
-    for (int y = 0; y < 128; y++) { for (int x = 0; x < 128; x++) { chunk_set(mychunk, z, y, x, 1.0f); } }
+    for (int y = 0; y < 128; y++) { for (int x = 0; x < 128; x++) { vs_chunk_set(mychunk, z, y, x, 1.0f); } }
   }
-  chunk* smaller = sumpool(mychunk, 2, 2);
+  chunk* smaller = vs_sumpool(mychunk, 2, 2);
   if (smaller == NULL) { return 1; }
   if (smaller->dims[0] != 64 || smaller->dims[1] != 64 || smaller->dims[2] != 64) { return 1; }
   for (int z = 0; z < 64; z++) {
     for (int y = 0; y < 64; y++) {
       for (int x = 0; x < 64; x++) {
-        f32 val = chunk_get(smaller, z, y, x);
+        f32 val = vs_chunk_get(smaller, z, y, x);
         if (val > 8.01f || val < 7.99f) { return 1; }
       }
     }
@@ -146,7 +146,7 @@ int testvcps() {
   for (size_t i = 0; i < total_points; i++) { test_float_data[i] = (float)i + 0.5f; }
 
   // Write float data as double
-  if (write_vcps("test_double.vcps", width, height, dim, test_float_data, "float", "double")) {
+  if (vs_vcps_write("test_double.vcps", width, height, dim, test_float_data, "float", "double")) {
     fprintf(stderr, "Failed to write float->double test file\n");
     free(test_float_data);
     return 1;
@@ -156,7 +156,7 @@ int testvcps() {
   float* read_float_data = malloc(total_points * sizeof(float));
   size_t read_width, read_height, read_dim;
 
-  int read_status = read_vcps("test_double.vcps", &read_width, &read_height, &read_dim, read_float_data, "float");
+  int read_status = vs_vcps_read("test_double.vcps", &read_width, &read_height, &read_dim, read_float_data, "float");
   if (read_status) {
     fprintf(stderr, "Failed to read double->float test file (status=%d)\n", read_status);
     free(test_float_data);
@@ -199,13 +199,13 @@ int testchamfer() {
   int normal_count1, normal_count2;
 
 
-  if (read_ply("./example_data/cell_yxz_002_007_070.ply", &vertices1, &normals1, &indices1, &vertex_count1,
+  if (vs_ply_read("./example_data/cell_yxz_002_007_070.ply", &vertices1, &normals1, &indices1, &vertex_count1,
                &normal_count1, &index_count1) != 0) {
     printf("Failed to read first mesh\n");
     return 1;
   }
 
-  if (read_ply("./example_data/cell_yxz_002_007_071.ply", &vertices2, &normals2, &indices2, &vertex_count2,
+  if (vs_ply_read("./example_data/cell_yxz_002_007_071.ply", &vertices2, &normals2, &indices2, &vertex_count2,
                &normal_count2, &index_count2) != 0) {
     printf("Failed to read second mesh\n");
     free(vertices1);
@@ -213,7 +213,7 @@ int testchamfer() {
     return 1;
   }
 
-  float distance = chamfer_distance(vertices1, vertex_count1,
+  float distance = vs_chamfer_distance(vertices1, vertex_count1,
                                     vertices2, vertex_count2);
 
   printf("Chamfer distance between meshes: %f\n", distance);
