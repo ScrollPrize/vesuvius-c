@@ -1174,38 +1174,38 @@ int vs_chunk_fill(chunk *chunk, volume *vol, int start[static 3]);
 // - These are not exported and are only meant to be used within vesuvius-c.h itself
 
 // utils
-void vs__trim(char* str);
-void vs__skip_line(FILE *fp);
-bool vs__str_starts_with(const char* str, const char* prefix);
-int vs__mkdir_p(const char* path);
-bool vs__path_exists(const char *path);
+static void vs__trim(char* str);
+static void vs__skip_line(FILE *fp);
+static bool vs__str_starts_with(const char* str, const char* prefix);
+static int vs__mkdir_p(const char* path);
+static bool vs__path_exists(const char *path);
 
 //chamfer
-f32 vs__squared_distance(const f32* p1, const f32* p2);
-f32 vs__min_distance_to_set(const f32* point, const f32* point_set, s32 set_size);
+static f32 vs__squared_distance(const f32* p1, const f32* p2);
+static f32 vs__min_distance_to_set(const f32* point, const f32* point_set, s32 set_size);
 
 //curl
-size_t vs__write_callback(void *contents, size_t size, size_t nmemb, void *userp);
+static size_t vs__write_callback(void *contents, size_t size, size_t nmemb, void *userp);
 
 //histogram
-s32 vs__get_bin_index(const histogram* hist, f32 value);
-f32 vs__get_slice_value(const f32* data, s32 y, s32 x, s32 dimx);
-f32 vs__get_chunk_value(const f32* data, s32 z, s32 y, s32 x, s32 dimy, s32 dimx);
+static s32 vs__get_bin_index(const histogram* hist, f32 value);
+static f32 vs__get_slice_value(const f32* data, s32 y, s32 x, s32 dimx);
+static f32 vs__get_chunk_value(const f32* data, s32 z, s32 y, s32 x, s32 dimy, s32 dimx);
 
 // math
-float vs__maxfloat(float a, float b);
-float vs__minfloat(float a, float b);
-float vs__avgfloat(float *data, int len);
-chunk *vs__create_box_kernel(s32 size);
-chunk* vs__convolve3d(chunk* input, chunk* kernel);
+static float vs__maxfloat(float a, float b);
+static float vs__minfloat(float a, float b);
+static float vs__avgfloat(float *data, int len);
+static chunk *vs__create_box_kernel(s32 size);
+static chunk* vs__convolve3d(chunk* input, chunk* kernel);
 
 // mesh
-void vs__interpolate_vertex(f32 isovalue,
+static void vs__interpolate_vertex(f32 isovalue,
                                     f32 v1, f32 v2,
                                     f32 x1, f32 y1, f32 z1,
                                     f32 x2, f32 y2, f32 z2,
                                     f32* out_x, f32* out_y, f32* out_z);
-void vs__process_cube(const f32* values,
+static void vs__process_cube(const f32* values,
                         s32 x, s32 y, s32 z,
                         s32 dimx, s32 dimy, s32 dimz,
                         f32 isovalue,
@@ -1213,45 +1213,45 @@ void vs__process_cube(const f32* values,
                         s32* indices,
                         s32* vertex_count,
                         s32* index_count);
-f32 vs__get_value(const f32* values, s32 x, s32 y, s32 z, s32 dimx, s32 dimy, s32 dimz);
+static f32 vs__get_value(const f32* values, s32 x, s32 y, s32 z, s32 dimx, s32 dimy, s32 dimz);
 
 //nrrd
-int vs__nrrd_parse_sizes(char* value, nrrd* nrrd);
-int vs__nrrd_parse_space_directions(char* value, nrrd* nrrd);
-int vs__nrrd_parse_space_origin(char* value, nrrd* nrrd);
-size_t vs__nrrd_get_type_size(const char* type);
-int vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd);
-int vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd);
+static int vs__nrrd_parse_sizes(char* value, nrrd* nrrd);
+static int vs__nrrd_parse_space_directions(char* value, nrrd* nrrd);
+static int vs__nrrd_parse_space_origin(char* value, nrrd* nrrd);
+static size_t vs__nrrd_get_type_size(const char* type);
+static int vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd);
+static int vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd);
 
 //ppm
-void vs__skip_whitespace_and_comments(FILE* fp);
-bool vs__ppm_read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val);
+static void vs__skip_whitespace_and_comments(FILE* fp);
+static bool vs__ppm_read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val);
 
 //tiff
-uint32_t vs__tiff_read_bytes(FILE* fp, int count, int littleEndian);
-void vs__tiff_read_string(FILE* fp, char* str, uint32_t offset, uint32_t count, long currentPos);
-float vs__tiff_read_rational(FILE* fp, uint32_t offset, int littleEndian, long currentPos);
-void vs__tiff_read_ifd_entry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart);
-bool vs__tiff_validate_directory(DirectoryInfo* dir, TiffImage* img);
-void vs__tiff_write_bytes(FILE* fp, uint32_t value, int count, int littleEndian);
-void vs__tiff_write_string(FILE* fp, const char* str, uint32_t offset);
-void vs__tiff_write_rational(FILE* fp, float value, uint32_t offset, int littleEndian);
-void vs__tiff_current_date_time(char* dateTime);
-uint32_t vs__tiff_write_ifd_entry(FILE* fp, uint16_t tag, uint16_t type, uint32_t count, uint32_t value, int littleEndian);
+static uint32_t vs__tiff_read_bytes(FILE* fp, int count, int littleEndian);
+static void vs__tiff_read_string(FILE* fp, char* str, uint32_t offset, uint32_t count, long currentPos);
+static float vs__tiff_read_rational(FILE* fp, uint32_t offset, int littleEndian, long currentPos);
+static void vs__tiff_read_ifd_entry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart);
+static bool vs__tiff_validate_directory(DirectoryInfo* dir, TiffImage* img);
+static void vs__tiff_write_bytes(FILE* fp, uint32_t value, int count, int littleEndian);
+static void vs__tiff_write_string(FILE* fp, const char* str, uint32_t offset);
+static void vs__tiff_write_rational(FILE* fp, float value, uint32_t offset, int littleEndian);
+static void vs__tiff_current_date_time(char* dateTime);
+static uint32_t vs__tiff_write_ifd_entry(FILE* fp, uint16_t tag, uint16_t type, uint32_t count, uint32_t value, int littleEndian);
 
 //vcps
-int vs__vcps_read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count);
-int vs__vcps_write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count);
+static int vs__vcps_read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count);
+static int vs__vcps_write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count);
 
 //zarr
 #ifdef VESUVIUS_ZARR_IMPL
-struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key);
-void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]);
-int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metadata);
+static struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key);
+static void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]);
+static int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metadata);
 #endif
 
 
-void vs__trim(char* str) {
+static void vs__trim(char* str) {
   char* end;
   while(isspace(*str)) str++;
   if(*str == 0) return;
@@ -1260,11 +1260,11 @@ void vs__trim(char* str) {
   end[1] = '\0';
 }
 
-bool vs__str_starts_with(const char* str, const char* prefix) {
+static bool vs__str_starts_with(const char* str, const char* prefix) {
   return strncmp(str, prefix, strlen(prefix)) == 0;
 }
 
-int vs__mkdir_p(const char* path) {
+static int vs__mkdir_p(const char* path) {
   char tmp[1024];
   char* p = NULL;
   size_t len;
@@ -1294,13 +1294,13 @@ int vs__mkdir_p(const char* path) {
 #endif
 }
 
-bool vs__path_exists(const char *path) {
+static bool vs__path_exists(const char *path) {
     return access(path, F_OK) == 0 ? true : false;
 }
 
 // chamfer
 
-f32 vs__squared_distance(const f32* p1, const f32* p2) {
+static f32 vs__squared_distance(const f32* p1, const f32* p2) {
   f32 dz = p1[0] - p2[0];
   f32 dy = p1[1] - p2[1];
   f32 dx = p1[2] - p2[2];
@@ -1308,7 +1308,7 @@ f32 vs__squared_distance(const f32* p1, const f32* p2) {
 }
 
 
-f32 vs__min_distance_to_set(const f32* point, const f32* point_set, s32 set_size) {
+static f32 vs__min_distance_to_set(const f32* point, const f32* point_set, s32 set_size) {
   f32 min_dist = FLT_MAX;
 
   for (s32 i = 0; i < set_size; i++) {
@@ -1337,7 +1337,7 @@ f32 vs_chamfer_distance(const f32* set1, s32 size1, const f32* set2, s32 size2) 
 
 //curl
 #ifdef VESUVIUS_CURL_IMPL
-size_t vs__write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
+static size_t vs__write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     DownloadBuffer *mem = userp;
 
@@ -1442,7 +1442,7 @@ void vs_histogram_free(histogram *hist) {
 }
 
 
-s32 vs__get_bin_index(const histogram* hist, f32 value) {
+static s32 vs__get_bin_index(const histogram* hist, f32 value) {
     if (value <= hist->min_value) return 0;
     if (value >= hist->max_value) return hist->num_bins - 1;
 
@@ -1511,11 +1511,11 @@ histogram* vs_chunk_histogram(const f32* data,
     return hist;
 }
 
-f32 vs__get_slice_value(const f32* data, s32 y, s32 x, s32 dimx) {
+static f32 vs__get_slice_value(const f32* data, s32 y, s32 x, s32 dimx) {
     return data[y * dimx + x];
 }
 
-f32 vs__get_chunk_value(const f32* data, s32 z, s32 y, s32 x,
+static f32 vs__get_chunk_value(const f32* data, s32 z, s32 y, s32 x,
                                   s32 dimy, s32 dimx) {
     return data[z * (dimy * dimx) + y * dimx + x];
 }
@@ -1593,9 +1593,9 @@ hist_stats vs_calculate_histogram_stats(const histogram *hist) {
 //   - increasing X means looking farther right in a slice
 
 
-float vs__maxfloat(float a, float b) { return a > b ? a : b; }
-float vs__minfloat(float a, float b) { return a < b ? a : b; }
-float vs__avgfloat(float *data, int len) {
+static float vs__maxfloat(float a, float b) { return a > b ? a : b; }
+static float vs__minfloat(float a, float b) { return a < b ? a : b; }
+static float vs__avgfloat(float *data, int len) {
   double sum = 0.0;
   for (int i = 0; i < len; i++) sum += data[i];
   return sum / len;
@@ -1730,7 +1730,7 @@ chunk *vs_sumpool(chunk *inchunk, s32 kernel, s32 stride) {
 }
 
 
-chunk *vs__create_box_kernel(s32 size) {
+static chunk *vs__create_box_kernel(s32 size) {
   int dims[3] = {size,size,size};
   chunk* kernel = vs_chunk_new(dims);
   float value = 1.0f / (size * size * size);
@@ -1740,7 +1740,7 @@ chunk *vs__create_box_kernel(s32 size) {
   return kernel;
 }
 
-chunk* vs__convolve3d(chunk* input, chunk* kernel) {
+static chunk* vs__convolve3d(chunk* input, chunk* kernel) {
 
   s32 dims[3] = {input->dims[0], input->dims[1], input->dims[2]};
 
@@ -2006,7 +2006,7 @@ void vs_mesh_scale(mesh *m, f32 scale_z, f32 scale_y, f32 scale_x) {
     }
 }
 
-void vs__interpolate_vertex(f32 isovalue,
+static void vs__interpolate_vertex(f32 isovalue,
                                     f32 v1, f32 v2,
                                     f32 x1, f32 y1, f32 z1,
                                     f32 x2, f32 y2, f32 z2,
@@ -2036,12 +2036,12 @@ void vs__interpolate_vertex(f32 isovalue,
     *out_z = z1 + mu * (z2 - z1);
 }
 
-f32 vs__get_value(const f32* values, s32 x, s32 y, s32 z,
+static f32 vs__get_value(const f32* values, s32 x, s32 y, s32 z,
                             s32 dimx, s32 dimy, s32 dimz) {
     return values[z * (dimx * dimy) + y * dimx + x];
 }
 
-void vs__process_cube(const f32* values,
+static void vs__process_cube(const f32* values,
                         s32 x, s32 y, s32 z,
                         s32 dimx, s32 dimy, s32 dimz,
                         f32 isovalue,
@@ -2496,7 +2496,7 @@ s32 vs_march_cubes(const f32* values,
 }
 
 // nrrd
-int vs__nrrd_parse_sizes(char* value, nrrd* nrrd) {
+static int vs__nrrd_parse_sizes(char* value, nrrd* nrrd) {
     char* token = strtok(value, " ");
     s32 i = 0;
     while (token != NULL && i < nrrd->dimension) {
@@ -2511,7 +2511,7 @@ int vs__nrrd_parse_sizes(char* value, nrrd* nrrd) {
     return (i == nrrd->dimension) ? 0 : 1;
 }
 
-int vs__nrrd_parse_space_directions(char* value, nrrd* nrrd) {
+static int vs__nrrd_parse_space_directions(char* value, nrrd* nrrd) {
     char* token = strtok(value, ") (");
     s32 i = 0;
     while (token != NULL && i < nrrd->dimension) {
@@ -2534,7 +2534,7 @@ int vs__nrrd_parse_space_directions(char* value, nrrd* nrrd) {
     return 0;
 }
 
-int vs__nrrd_parse_space_origin(char* value, nrrd* nrrd) {
+static int vs__nrrd_parse_space_origin(char* value, nrrd* nrrd) {
     value++; // Skip first '('
     value[strlen(value)-1] = '\0'; // Remove last ')'
 
@@ -2548,7 +2548,7 @@ int vs__nrrd_parse_space_origin(char* value, nrrd* nrrd) {
     return 0;
 }
 
-size_t vs__nrrd_get_type_size(const char* type) {
+static size_t vs__nrrd_get_type_size(const char* type) {
     if (strcmp(type, "uint8") == 0 || strcmp(type, "uchar") == 0) return 1;
     if (strcmp(type, "uint16") == 0) return 2;
     if (strcmp(type, "uint32") == 0) return 4;
@@ -2557,7 +2557,7 @@ size_t vs__nrrd_get_type_size(const char* type) {
     return 0;
 }
 
-int vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd) {
+static int vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd) {
     size_t bytes_read = fread(nrrd->data, 1, nrrd->data_size, fp);
     if (bytes_read != nrrd->data_size) {
         printf("Failed to read data: expected %zu bytes, got %zu",
@@ -2567,7 +2567,7 @@ int vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd) {
     return 0;
 }
 
-int vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd) {
+static int vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd) {
     printf("reading compressed data is not supported yet for nrrd\n");
     assert("false");
     return 1;
@@ -3209,7 +3209,7 @@ void vs_ppm_free(ppm* img) {
     }
 }
 
-void vs__skip_whitespace_and_comments(FILE* fp) {
+static void vs__skip_whitespace_and_comments(FILE* fp) {
     int c;
     while ((c = fgetc(fp)) != EOF) {
         if (c == '#') {
@@ -3222,7 +3222,7 @@ void vs__skip_whitespace_and_comments(FILE* fp) {
     }
 }
 
-bool vs__ppm_read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val) {
+static bool vs__ppm_read_header(FILE* fp, ppm_type* type, u32* width, u32* height, u8* max_val) {
     char magic[3];
 
     if (fgets(magic, sizeof(magic), fp) == NULL) {
@@ -3362,7 +3362,7 @@ void vs_ppm_get_pixel(const ppm* img, u32 x, u32 y, u8* r, u8* g, u8* b) {
 }
 
 // tiff
-uint32_t vs__tiff_read_bytes(FILE* fp, int count, int littleEndian) {
+static uint32_t vs__tiff_read_bytes(FILE* fp, int count, int littleEndian) {
     uint32_t value = 0;
     uint8_t byte;
 
@@ -3381,7 +3381,7 @@ uint32_t vs__tiff_read_bytes(FILE* fp, int count, int littleEndian) {
     return value;
 }
 
-void vs__tiff_read_string(FILE* fp, char* str, uint32_t offset, uint32_t count, long currentPos) {
+static void vs__tiff_read_string(FILE* fp, char* str, uint32_t offset, uint32_t count, long currentPos) {
     long savedPos = ftell(fp);
     fseek(fp, offset, SEEK_SET);
     fread(str, 1, count - 1, fp);
@@ -3389,7 +3389,7 @@ void vs__tiff_read_string(FILE* fp, char* str, uint32_t offset, uint32_t count, 
     fseek(fp, savedPos, SEEK_SET);
 }
 
-float vs__tiff_read_rational(FILE* fp, uint32_t offset, int littleEndian, long currentPos) {
+static float vs__tiff_read_rational(FILE* fp, uint32_t offset, int littleEndian, long currentPos) {
     long savedPos = ftell(fp);
     fseek(fp, offset, SEEK_SET);
     uint32_t numerator = vs__tiff_read_bytes(fp, 4, littleEndian);
@@ -3398,7 +3398,7 @@ float vs__tiff_read_rational(FILE* fp, uint32_t offset, int littleEndian, long c
     return denominator ? (float)numerator / denominator : 0.0f;
 }
 
-void vs__tiff_read_ifd_entry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart) {
+static void vs__tiff_read_ifd_entry(FILE* fp, DirectoryInfo* dir, int littleEndian, long ifdStart) {
     uint16_t tag = vs__tiff_read_bytes(fp, 2, littleEndian);
     uint16_t type = vs__tiff_read_bytes(fp, 2, littleEndian);
     uint32_t count = vs__tiff_read_bytes(fp, 4, littleEndian);
@@ -3467,7 +3467,7 @@ void vs__tiff_read_ifd_entry(FILE* fp, DirectoryInfo* dir, int littleEndian, lon
     }
 }
 
-bool vs__tiff_validate_directory(DirectoryInfo* dir, TiffImage* img) {
+static bool vs__tiff_validate_directory(DirectoryInfo* dir, TiffImage* img) {
     if (dir->width == 0 || dir->height == 0) {
         snprintf(img->errorMsg, sizeof(img->errorMsg), "Invalid dimensions");
         return false;
@@ -3780,7 +3780,7 @@ uint8_t vs_tiff_pixel8(const uint8_t* buffer, int y, int x, int width) {
 }
 
 
-void vs__tiff_write_bytes(FILE* fp, uint32_t value, int count, int littleEndian) {
+static void vs__tiff_write_bytes(FILE* fp, uint32_t value, int count, int littleEndian) {
     if (littleEndian) {
         for (int i = 0; i < count; i++) {
             uint8_t byte = (value >> (i * 8)) & 0xFF;
@@ -3794,13 +3794,13 @@ void vs__tiff_write_bytes(FILE* fp, uint32_t value, int count, int littleEndian)
     }
 }
 
-void vs__tiff_write_string(FILE* fp, const char* str, uint32_t offset) {
+static void vs__tiff_write_string(FILE* fp, const char* str, uint32_t offset) {
     fseek(fp, offset, SEEK_SET);
     size_t len = strlen(str);
     fwrite(str, 1, len + 1, fp);  // Include null terminator
 }
 
-void vs__tiff_write_rational(FILE* fp, float value, uint32_t offset, int littleEndian) {
+static void vs__tiff_write_rational(FILE* fp, float value, uint32_t offset, int littleEndian) {
     fseek(fp, offset, SEEK_SET);
     uint32_t numerator = (uint32_t)(value * 1000);
     uint32_t denominator = 1000;
@@ -3808,7 +3808,7 @@ void vs__tiff_write_rational(FILE* fp, float value, uint32_t offset, int littleE
     vs__tiff_write_bytes(fp, denominator, 4, littleEndian);
 }
 
-void vs__tiff_current_date_time(char* dateTime) {
+static void vs__tiff_current_date_time(char* dateTime) {
     time_t now;
     struct tm* timeinfo;
     time(&now);
@@ -3816,7 +3816,7 @@ void vs__tiff_current_date_time(char* dateTime) {
     strftime(dateTime, 20, "%Y:%m:%d %H:%M:%S", timeinfo);
 }
 
-uint32_t vs__tiff_write_ifd_entry(FILE* fp, uint16_t tag, uint16_t type, uint32_t count,
+static uint32_t vs__tiff_write_ifd_entry(FILE* fp, uint16_t tag, uint16_t type, uint32_t count,
                              uint32_t value, int littleEndian) {
     vs__tiff_write_bytes(fp, tag, 2, littleEndian);
     vs__tiff_write_bytes(fp, type, 2, littleEndian);
@@ -3967,7 +3967,7 @@ TiffImage* vs_tiff_create(uint32_t width, uint32_t height, uint16_t depth,
         
 // vcps
 
-int vs__vcps_read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count) {
+static int vs__vcps_read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count) {
     // Fast path: types match, direct read
     if (strcmp(src_type, dst_type) == 0) {
         size_t element_size = strcmp(src_type, "float") == 0 ? sizeof(f32) : sizeof(f64);
@@ -4007,7 +4007,7 @@ int vs__vcps_read_binary_data(FILE* fp, void* out_data, const char* src_type, co
     return 1;
 }
 
-int vs__vcps_write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count) {
+static int vs__vcps_write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count) {
     // Fast path: types match, direct write
     if (strcmp(src_type, dst_type) == 0) {
         size_t element_size = strcmp(src_type, "float") == 0 ? sizeof(f32) : sizeof(f64);
@@ -4237,7 +4237,7 @@ chunk* vs_vol_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[sta
 
 #ifdef VESUVIUS_ZARR_IMPL
 
-struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key) {
+static struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key) {
   struct json_object_element_s *element = obj->start;
   while (element) {
     if (element->name->string_size == strlen(key) &&
@@ -4249,7 +4249,7 @@ struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const 
   return NULL;
 }
 
-void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]) {
+static void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]) {
   struct json_array_element_s *element = array->start;
   for (int i = 0; i < 3 && element; i++) {
     struct json_number_s *num = element->value->payload;
@@ -4258,7 +4258,7 @@ void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]) {
   }
 }
 
-int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metadata) {
+static int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metadata) {
   struct json_value_s *root = json_parse(json_string, strlen(json_string));
   if (!root) {
     printf("Failed to parse JSON!\n");
