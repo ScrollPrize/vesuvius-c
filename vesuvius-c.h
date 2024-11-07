@@ -1,8 +1,6 @@
 #ifndef VESUVIUS_H
 #define VESUVIUS_H
 
-#ifndef VESUVIUS_IMPL
-
 #include <ctype.h>
 #include <limits.h>
 #include <stddef.h>
@@ -822,7 +820,6 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
     }
 }
 
-#endif // if 0
 
 //vesuvius notes:
 // - when passing pointers to a _new function in order to fill out fields in the struct (e.g. vs_mesh_new)
