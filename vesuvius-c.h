@@ -1,7 +1,7 @@
 #ifndef VESUVIUS_H
 #define VESUVIUS_H
 
-#if 0
+#ifndef VESUVIUS_IMPL
 
 #include <ctype.h>
 #include <limits.h>
