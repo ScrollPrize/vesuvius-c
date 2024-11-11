@@ -226,8 +226,8 @@ void init_vesuvius(const char *scroll_id, int energy, double resolution) {
 
     // Print shape and chunk size to verify
     printf("Loaded Zarr metadata from: %s\n", ZARR_URL);
-    printf("Shape: Z=%d, Y=%d, X=%d\n", SHAPE_Z, SHAPE_Y, SHAPE_X);
-    printf("Chunk Size: Z=%d, Y=%d, X=%d\n", CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z);
+    printf("Shape: X=%d, Y=%d, Z=%d\n", SHAPE_X, SHAPE_Y, SHAPE_Z);
+    printf("Chunk Size: X=%d, Y=%d, Z=%d\n", CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z);
 
     // Initialize cache (assuming init_cache() initializes the cache system)
     cache = init_cache();
