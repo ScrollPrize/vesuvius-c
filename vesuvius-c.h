@@ -846,7 +846,10 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
 #include <string.h>
 #include <errno.h>
 #include <time.h>
-#include <unistd.h>
+
+#if defined(__linux__) || defined(__GLIBC__)
+#include <execinfo.h>
+#endif
 
 #ifdef VESUVIUS_CURL_IMPL
 #include <curl/curl.h>
@@ -855,6 +858,14 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
 #ifdef VESUVIUS_ZARR_IMPL
 #include <blosc2.h>
 #include <json.h>
+#endif
+
+
+#ifdef NDEBUG
+#define ASSERT(expr) ((void)0)
+#else
+#define ASSERT(expr) \
+((expr) ? ((void)0) : vs__assert_fail_with_backtrace(#expr, __FILE__, __LINE__, __func__))
 #endif
 
 typedef uint8_t u8;
@@ -1157,6 +1168,7 @@ chunk* vs_vol_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[sta
 // zarr
 #ifdef VESUVIUS_ZARR_IMPL
 zarr_metadata vs_zarr_parse_zarray(char *path);
+chunk* vs_zarr_read_chunk(char* path, zarr_metadata metadata);
 #endif
 
 // vesuvius specific
@@ -1176,6 +1188,9 @@ static void vs__skip_line(FILE *fp);
 static bool vs__str_starts_with(const char* str, const char* prefix);
 static int vs__mkdir_p(const char* path);
 static bool vs__path_exists(const char *path);
+static void vs__print_backtrace(void);
+static void vs__print_assert_details(const char* expr, const char* file, int line, const char* func);
+static void vs__assert_fail_with_backtrace(const char* expr, const char* file, int line, const char* func);
 
 //chamfer
 static f32 vs__squared_distance(const f32* p1, const f32* p2);
@@ -1293,6 +1308,49 @@ static int vs__mkdir_p(const char* path) {
 
 static bool vs__path_exists(const char *path) {
     return access(path, F_OK) == 0 ? true : false;
+}
+
+
+static void vs__print_backtrace(void) {
+#if defined(__linux__) || defined(__GLIBC__)
+
+    void *stack_frames[64];
+    int frame_count;
+    char **frame_strings;
+
+    // Get the stack frames
+    frame_count = backtrace(stack_frames, 64);
+
+    // Convert addresses to strings
+    frame_strings = backtrace_symbols(stack_frames, frame_count);
+    if (frame_strings == NULL) {
+        perror("backtrace_symbols");
+        exit(EXIT_FAILURE);
+    }
+
+    // Print the backtrace
+    fprintf(stderr, "\nBacktrace:\n");
+    for (int i = 0; i < frame_count; i++) {
+        fprintf(stderr, "  [%d] %s\n", i, frame_strings[i]);
+    }
+
+    free(frame_strings);
+#else
+    printf("cannot print a backtrace on non linux systems\n");
+#endif
+}
+
+static void vs__print_assert_details(const char* expr, const char* file, int line, const char* func) {
+    fprintf(stderr, "\nAssertion failed!\n");
+    fprintf(stderr, "Expression: %s\n", expr);
+    fprintf(stderr, "Location  : %s:%d\n", file, line);
+    fprintf(stderr, "Function  : %s\n", func);
+}
+
+static void vs__assert_fail_with_backtrace(const char* expr, const char* file, int line, const char* func) {
+    vs__print_assert_details(expr, file, line, func);
+    vs__print_backtrace();
+    abort();
 }
 
 // chamfer
@@ -4374,6 +4432,41 @@ zarr_metadata vs_zarr_parse_zarray(char *path) {
   free(buf);
   return metadata;
 }
+
+chunk* vs_zarr_read_chunk(char* path, zarr_metadata metadata) {
+
+    int z = metadata.chunks[0];
+    int y = metadata.chunks[1];
+    int x = metadata.chunks[2];
+    int dtype_size = 0;
+    if(strcmp(metadata.dtype,"|u1") == 0) {
+        dtype_size = 1;
+    } else if (strcmp(metadata.dtype,"|u2") == 0){
+        dtype_size = 2;
+    } else {
+        fprintf(stderr,"unsupported zarr format. Only unsigned 8 and unsigned 16 are supported\n");
+    }
+    FILE* fp = fopen(path, "rb");
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    u8* compressed_data = malloc(size);
+    fread(compressed_data,1,size,fp);
+
+    unsigned char *decompressed_data = malloc(z * y * x * dtype_size);
+    int decompressed_size = blosc2_decompress(compressed_data, size, decompressed_data, z*y*x*dtype_size);
+    if (decompressed_size < 0) {
+        fprintf(stderr, "Blosc2 decompression failed: %d\n", decompressed_size);
+        free(compressed_data);
+        free(decompressed_data);
+        return NULL;
+    }
+    chunk* ret = vs_chunk_new((s32[3]){z,y,x});
+
+    return ret;
+}
+
+
 #endif
 
 //vesuvius specific

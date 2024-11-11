@@ -1,6 +1,9 @@
 #define VESUVIUS_IMPL
 #include "vesuvius-c.h"
 
+// Paths to sample data for testing assume that the executable lives under the cmake-build-* directory
+// so to access e.g. img/ the path would be "../img/"
+
 int testcurl() {
 #ifndef VESUVIUS_CURL_IMPL
   printf("vesuvius was not built with curl support. skipping test\n");
@@ -9,7 +12,7 @@ int testcurl() {
   printf("%s\n",__FUNCTION__);
 
   char* buf;
-  long len = download("https://dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/paths/20230503225234/author.txt", &buf);
+  long len = vs_download("https://dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/paths/20230503225234/author.txt", &buf);
   if(len!= 6) {
     return 1;
   }
@@ -22,9 +25,9 @@ int testcurl() {
 int testhistogram() {
   printf("%s\n", __FUNCTION__);
 
-  chunk* mychunk = vs_tiff_to_chunk("./img/example_3d.tif");
+  chunk* mychunk = vs_tiff_to_chunk("../img/sample_3d.tif");
   if (mychunk == NULL) { return 1; }
-  slice* myslice = vs_tiff_to_slice("./img/example_3d.tif", 0);
+  slice* myslice = vs_tiff_to_slice("../img/sample_3d.tif", 0);
   if (myslice == NULL) { return 1; }
   histogram* slice_hist = vs_slice_histogram(myslice->data, myslice->dims[0], myslice->dims[1], 256);
   if (slice_hist == NULL) { return 1; }
@@ -51,15 +54,13 @@ int testzarr() {
   printf("vesuvius was not built with zarr support. skipping testzarr\n");
   return 0;
 #else
-  printf("zarr support not yet implemented\n");
-  return 0;
-  /*
-  printf("%s\n",__FUNCTION__);
 
-  zarr_metadata metadata = parse_zarray("./example_data/test.zarray");
-  int z = metadata.shape[0];
-  int y = metadata.shape[1];
-  int x = metadata.shape[2];
+  printf("%s\n",__FUNCTION__);
+  // https://dl.ash2txt.org/other/dev/scrolls/1/volumes/54keV_7.91um.zarr/0/.zarray
+  zarr_metadata metadata = vs_zarr_parse_zarray("../example_data/test.zarray");
+  int z = metadata.chunks[0];
+  int y = metadata.chunks[1];
+  int x = metadata.chunks[2];
   int dtype_size = 0;
   if(strcmp(metadata.dtype,"|u1") == 0) {
     dtype_size = 1;
@@ -67,17 +68,17 @@ int testzarr() {
     return 1;
     assert(false);
   }
-
-  FILE* fp = fopen("./example_data/30", "rb");
+  // https://dl.ash2txt.org/other/dev/scrolls/1/volumes/54keV_7.91um.zarr/0/55/35/32
+  FILE* fp = fopen("../example_data/32", "rb");
   fseek(fp, 0, SEEK_END);
   long size = ftell(fp);
   fseek(fp, 0, SEEK_SET);
   assert(size < 1024*1024*1024);
   u8* compressed_data = malloc(size);
-
+  fread(compressed_data,1,size,fp);
 
   unsigned char *decompressed_data = malloc(z * y * x * dtype_size);
-  int decompressed_size = blosc2_decompress(compressed_data, size, decompressed_data, z*y*x);
+  int decompressed_size = blosc2_decompress(compressed_data, size, decompressed_data, z*y*x*dtype_size);
   if (decompressed_size < 0) {
     fprintf(stderr, "Blosc2 decompression failed: %d\n", decompressed_size);
     free(compressed_data);
@@ -86,7 +87,7 @@ int testzarr() {
   }
   printf("asdf\n");
   return 0;
-  */
+
 #endif
 }
 
@@ -105,7 +106,7 @@ int testmesher() {
   int ret = vs_march_cubes(rescaled->data, rescaled->dims[0], rescaled->dims[1], rescaled->dims[2], 0.5f, &vertices,
                         &indices, &vertex_count, &indices_count);
   if (ret != 0) { return 1; }
-  ret = vs_write_ply("mymesh.ply", vertices,NULL, indices, vertex_count, indices_count);
+  ret = vs_ply_write("mymesh.ply", vertices,NULL, indices, vertex_count, indices_count);
   if (ret != 0) { return 1; }
   vs_chunk_free(rescaled);
   vs_chunk_free(mychunk);
