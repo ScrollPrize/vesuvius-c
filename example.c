@@ -4,7 +4,11 @@
 
 int main() {
     // Initialize the library
-    init_vesuvius();
+    const char *scroll_id = "1";
+    const int energy = 54;
+    const double resolution = 7.91;
+
+    init_vesuvius(scroll_id, energy, resolution);
 
     // Read a single value from the scroll volume
     unsigned char value;
