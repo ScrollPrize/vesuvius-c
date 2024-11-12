@@ -8,20 +8,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <curl/curl.h>
+#include <json-c/json.h>
 #include <blosc2.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <errno.h>
 #include <float.h>
 
-// Zarr config
-#define ZARR_URL "https://dl.ash2txt.org/other/dev/scrolls/1/volumes/54keV_7.91um.zarr/0/"
-#define CHUNK_SIZE_X 128
-#define CHUNK_SIZE_Y 128
-#define CHUNK_SIZE_Z 128
-#define SHAPE_X 8096
-#define SHAPE_Y 7888
-#define SHAPE_Z 14376
+// Variables to hold Zarr's chunk sizes and shape, initially set to -1 to indicate uninitialized
+int CHUNK_SIZE_X = -1, CHUNK_SIZE_Y = -1, CHUNK_SIZE_Z = -1;
+int SHAPE_X = -1, SHAPE_Y = -1, SHAPE_Z = -1;
+
+// Buffer size for metadata JSON and URL
+#define BUFFER_SIZE 4096
+#define URL_SIZE 256
+
+// Global variable to store the dynamically constructed Zarr URL
+char ZARR_URL[URL_SIZE] = {0};  // Initially empty
+
 #define CACHE_CAPACITY 100  // Define the LRU cache capacity
 #define CACHE_DIR ".vesuvius-cache"
 
@@ -72,7 +76,12 @@ typedef struct {
 } TriangleMesh;
 
 // Function prototypes
-void init_vesuvius();
+static size_t write_callback(void *ptr, size_t size, size_t nmemb, void *stream);
+static int fetch_metadata(const char *url, char *buffer);
+static int parse_metadata(const char *buffer);
+int load_shape_and_chunksize(void);
+
+void init_vesuvius(const char *scroll_id, int energy, double resolution);
 
 LRUCache *init_cache();
 LRUNode *get_cache(LRUCache *cache, int chunk_x, int chunk_y, int chunk_z);
@@ -107,9 +116,86 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi);
 // Global cache
 LRUCache *cache;
 
-// Initialize the vesuvius library
-void init_vesuvius() {
-    cache = init_cache();
+// Internal function to write data fetched by cURL
+static size_t write_callback(void *ptr, size_t size, size_t nmemb, void *stream) {
+    strncat((char *)stream, (char *)ptr, size * nmemb);
+    return size * nmemb;
+}
+
+// Fetches the metadata JSON from the specified Zarr directory URL
+static int fetch_metadata(const char *url, char *buffer) {
+    CURL *curl;
+    CURLcode res;
+
+    // Construct the full URL to the `.zarray` metadata file
+    char metadata_url[URL_SIZE];
+    snprintf(metadata_url, URL_SIZE, "%s.zarray", url);
+
+    curl = curl_easy_init();
+    if (curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, metadata_url);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, buffer);
+        res = curl_easy_perform(curl);
+        curl_easy_cleanup(curl);
+
+        if (res != CURLE_OK) {
+            fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+            return -1;
+        }
+    } else {
+        fprintf(stderr, "Failed to initialize curl\n");
+        return -1;
+    }
+    return 0;
+}
+
+// Parses the metadata JSON to retrieve chunk sizes and shape
+static int parse_metadata(const char *buffer) {
+    struct json_object *parsed_json, *chunks, *shape;
+
+    parsed_json = json_tokener_parse(buffer);
+    if (parsed_json == NULL) {
+        fprintf(stderr, "Failed to parse JSON\n");
+        return -1;
+    }
+
+    // Extract "chunks" and "shape" arrays from JSON
+    if (!json_object_object_get_ex(parsed_json, "chunks", &chunks) ||
+        !json_object_object_get_ex(parsed_json, "shape", &shape)) {
+        fprintf(stderr, "Missing 'chunks' or 'shape' in metadata\n");
+        json_object_put(parsed_json);
+        return -1;
+    }
+
+    // Set chunk sizes from "chunks" array
+    CHUNK_SIZE_Z = json_object_get_int(json_object_array_get_idx(chunks, 0));
+    CHUNK_SIZE_Y = json_object_get_int(json_object_array_get_idx(chunks, 1));
+    CHUNK_SIZE_X = json_object_get_int(json_object_array_get_idx(chunks, 2));
+
+    // Set shape sizes from "shape" array
+    SHAPE_Z = json_object_get_int(json_object_array_get_idx(shape, 0));
+    SHAPE_Y = json_object_get_int(json_object_array_get_idx(shape, 1));
+    SHAPE_X = json_object_get_int(json_object_array_get_idx(shape, 2));
+
+    json_object_put(parsed_json);  // Free JSON object
+    return 0;
+}
+
+// Public function to initialize chunk sizes and shape
+int load_shape_and_chunksize() {
+    char buffer[BUFFER_SIZE] = {0};
+
+    if (fetch_metadata(ZARR_URL, buffer) != 0) {
+        fprintf(stderr, "Failed to fetch metadata\n");
+        return -1;
+    }
+    if (parse_metadata(buffer) != 0) {
+        fprintf(stderr, "Failed to parse metadata\n");
+        return -1;
+    }
+
+    return 0;
 }
 
 // Function to write data to memory (used by curl)
@@ -123,6 +209,28 @@ size_t write_data(void *ptr, size_t size, size_t nmemb, MemoryChunk *chunk) {
     memcpy(&(chunk->data[chunk->size]), ptr, realsize);
     chunk->size += realsize;
     return realsize;
+}
+
+// Initialize the vesuvius library with dynamic URL construction
+void init_vesuvius(const char *scroll_id, int energy, double resolution) {
+    // Construct the ZARR_URL based on the provided parameters, stopping at the directory
+    snprintf(ZARR_URL, URL_SIZE, 
+             "https://dl.ash2txt.org/other/dev/scrolls/%s/volumes/%dkeV_%.2fum.zarr/0/", 
+             scroll_id, energy, resolution);
+
+    // Load shape and chunk size from the dynamically constructed ZARR_URL
+    if (load_shape_and_chunksize() != 0) {
+        fprintf(stderr, "Failed to load shape and chunk size\n");
+        exit(EXIT_FAILURE);  // Exit if metadata loading fails
+    }
+
+    // Print shape and chunk size to verify
+    printf("Loaded Zarr metadata from: %s\n", ZARR_URL);
+    printf("Shape: X=%d, Y=%d, Z=%d\n", SHAPE_X, SHAPE_Y, SHAPE_Z);
+    printf("Chunk Size: X=%d, Y=%d, Z=%d\n", CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z);
+
+    // Initialize cache (assuming init_cache() initializes the cache system)
+    cache = init_cache();
 }
 
 // Initialize the LRU cache

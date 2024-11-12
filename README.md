@@ -8,7 +8,11 @@ From [Vesuvius Challenge](https://scrollprize.org), a single-header C library fo
 #include "vesuvius-c.h"
 
 int main() {
-    init_vesuvius();
+    const char *scroll_id = "1";
+    const int energy = 54;
+    const double resolution = 7.91;
+
+    init_vesuvius(scroll_id, energy, resolution);
 
     // Define a region of interest in the scroll volume
     RegionOfInterest roi = {
@@ -39,7 +43,7 @@ The library fetches scroll data from the Vesuvius Challenge [data server](https:
 
 For a similar library in Python, see [vesuvius](https://github.com/ScrollPrize/vesuvius).
 
-> ⚠️ `vesuvius-c` is in beta and the interface may change. Only Scroll 1 is currently supported. More data may be added in the future.
+> ⚠️ `vesuvius-c` is in beta and the interface may change. More data may be added in the future.
 
 ## Usage
 
@@ -52,27 +56,27 @@ See [example.c](example.c) for example library usage.
 ### Dependencies:
 
 * [libcurl](https://curl.se/libcurl/)
+* [json-c](https://json-c.github.io/json-c/)
 * [c-blosc2](https://github.com/Blosc/c-blosc2)
 
-`libcurl` is used for fetching volume chunks and is likely already available on your system. `c-blosc2` is used to decompress the Zarr chunks read from the server and may require installation.
+`libcurl` is used for fetching volume chunks and is likely already available on your system. `c-blosc2` is used to decompress the Zarr chunks read from the server and may require installation. `json-c` is used to read the zarr metadata.
 
 ### Build and run:
 
 Link the dependencies and build your program:
 
 ```sh
-gcc -o example example.c -lcurl -lblosc2
+gcc -o example example.c -lcurl -lblosc2 -ljson-c
 ./example
 ```
 
 It may be necessary to point to the `c-blosc2` installation. For example, on Apple Silicon after `brew install c-blosc2`:
 
 ```sh
-gcc -o example example.c -I/opt/homebrew/Cellar/c-blosc2/2.15.1/include -L/opt/homebrew/Cellar/c-blosc2/2.15.1/lib -lcurl -lblosc2
+gcc -o example example.c -I/opt/homebrew/Cellar/c-blosc2/2.15.1/include -L/opt/homebrew/Cellar/c-blosc2/2.15.1/lib -lcurl -lblosc2 -ljson-c
 ./example
 ```
 
 ## Next features
 
-* Volumes in addition to Scroll 1
 * Reading scroll segments (`.obj` mesh files)
