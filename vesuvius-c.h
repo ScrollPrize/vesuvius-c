@@ -1169,6 +1169,9 @@ chunk* vs_vol_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[sta
 #ifdef VESUVIUS_ZARR_IMPL
 zarr_metadata vs_zarr_parse_zarray(char *path);
 chunk* vs_zarr_read_chunk(char* path, zarr_metadata metadata);
+chunk* vs_zarr_decompress_chunk(long size, void* compressed_data, zarr_metadata metadata);
+int vs_zarr_parse_metadata(const char *json_string, zarr_metadata *metadata);
+
 #endif
 
 // vesuvius specific
@@ -1259,7 +1262,6 @@ static int vs__vcps_write_binary_data(FILE* fp, const void* data, const char* sr
 #ifdef VESUVIUS_ZARR_IMPL
 static struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key);
 static void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]);
-static int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metadata);
 #endif
 
 
@@ -2522,7 +2524,7 @@ s32 vs_march_cubes(const f32* values,
     if (!vertices || !indices) {
         free(vertices);
         free(indices);
-        return 0;
+        return 1;
     }
 
     s32 vertex_count = 0;
@@ -4313,11 +4315,11 @@ static void vs__json_parse_int32_array(struct json_array_s *array, int32_t outpu
   }
 }
 
-static int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metadata) {
+int vs_zarr_parse_metadata(const char *json_string, zarr_metadata *metadata) {
   struct json_value_s *root = json_parse(json_string, strlen(json_string));
   if (!root) {
     printf("Failed to parse JSON!\n");
-    return 0;
+    return 1;
   }
 
   struct json_object_s *object = root->payload;
@@ -4392,7 +4394,7 @@ static int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metad
   }
 
   free(root);
-  return 1;
+  return 0;
 }
 
 zarr_metadata vs_zarr_parse_zarray(char *path) {
@@ -4412,7 +4414,7 @@ zarr_metadata vs_zarr_parse_zarray(char *path) {
   fread(buf, 1, size, fp);
 
 
-  if (vs__zarr_parse_metadata(buf, &metadata)) {
+  if (vs_zarr_parse_metadata(buf, &metadata)) {
     printf("Shape: [%d, %d, %d]\n",
            metadata.shape[0], metadata.shape[1], metadata.shape[2]);
     printf("Chunks: [%d, %d, %d]\n",
@@ -4435,6 +4437,20 @@ zarr_metadata vs_zarr_parse_zarray(char *path) {
 
 chunk* vs_zarr_read_chunk(char* path, zarr_metadata metadata) {
 
+    FILE* fp = fopen(path, "rb");
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    u8* compressed_data = malloc(size);
+    fread(compressed_data,1,size,fp);
+
+    chunk* ret= vs_zarr_decompress_chunk(size, compressed_data, metadata);
+    free(compressed_data);
+    return ret;
+}
+
+chunk* vs_zarr_decompress_chunk(long size, void* compressed_data, zarr_metadata metadata) {
+
     int z = metadata.chunks[0];
     int y = metadata.chunks[1];
     int x = metadata.chunks[2];
@@ -4446,12 +4462,6 @@ chunk* vs_zarr_read_chunk(char* path, zarr_metadata metadata) {
     } else {
         fprintf(stderr,"unsupported zarr format. Only unsigned 8 and unsigned 16 are supported\n");
     }
-    FILE* fp = fopen(path, "rb");
-    fseek(fp, 0, SEEK_END);
-    long size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    u8* compressed_data = malloc(size);
-    fread(compressed_data,1,size,fp);
 
     unsigned char *decompressed_data = malloc(z * y * x * dtype_size);
     int decompressed_size = blosc2_decompress(compressed_data, size, decompressed_data, z*y*x*dtype_size);
@@ -4462,6 +4472,15 @@ chunk* vs_zarr_read_chunk(char* path, zarr_metadata metadata) {
         return NULL;
     }
     chunk* ret = vs_chunk_new((s32[3]){z,y,x});
+
+    for (int z = 0; z < ret->dims[0]; z++) {
+        for (int y = 0; y < ret->dims[1]; y++) {
+            for (int x = 0; x < ret->dims[2]; x++) {
+                vs_chunk_set(ret,z,y,x,(f32)decompressed_data[z*ret->dims[1]*ret->dims[2] +y*ret->dims[2] + x]);
+            }
+        }
+    }
+    free(decompressed_data);
 
     return ret;
 }

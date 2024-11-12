@@ -13,7 +13,7 @@ include_directories(third-party/json.h)
 find_package(Blosc2 REQUIRED)
 find_package(CURL REQUIRED)
 
-add_compile_options(-g3)
+add_compile_options(-g3 -Wall -Wextra)
 if(UNIX)
     add_link_options(-rdynamic)
 endif()
