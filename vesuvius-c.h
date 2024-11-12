@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <curl/curl.h>
-#include <json.h>
+#include <json-c/json.h>
 #include <blosc2.h>
 #include <sys/stat.h>
 #include <sys/types.h>
