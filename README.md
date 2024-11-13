@@ -77,6 +77,13 @@ gcc -o example example.c -I/opt/homebrew/Cellar/c-blosc2/2.15.1/include -L/opt/h
 ./example
 ```
 
+It may also be necessary to link with the system math library:
+
+```sh
+gcc -o example example.c -lcurl -lblosc2 -ljson-c -lm
+./example
+```
+
 ## Next features
 
 * Reading scroll segments (`.obj` mesh files)
