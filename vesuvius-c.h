@@ -962,7 +962,6 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
 
 #ifdef VESUVIUS_ZARR_IMPL
 #include <blosc2.h>
-#include <json.h>
 #endif
 
 typedef uint8_t u8;
@@ -1350,8 +1349,7 @@ static int vs__vcps_write_binary_data(FILE* fp, const void* data, const char* sr
 
 //zarr
 #ifdef VESUVIUS_ZARR_IMPL
-static struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key);
-static void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]);
+static void vs__json_parse_int32_array(json_object *array_obj, int32_t output[3]);
 static int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metadata);
 #endif
 
@@ -4342,107 +4340,94 @@ chunk* vs_vol_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[sta
 
 #ifdef VESUVIUS_ZARR_IMPL
 
-static struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key) {
-  struct json_object_element_s *element = obj->start;
-  while (element) {
-    if (element->name->string_size == strlen(key) &&
-        strncmp(element->name->string, key, element->name->string_size) == 0) {
-      return element->value;
+static void vs__json_parse_int32_array(json_object *array_obj, int32_t output[3]) {
+    size_t array_len = json_object_array_length(array_obj);
+    for (size_t i = 0; i < 3 && i < array_len; i++) {
+        json_object *element = json_object_array_get_idx(array_obj, i);
+        output[i] = (int32_t)json_object_get_int(element);
     }
-    element = element->next;
-  }
-  return NULL;
-}
-
-static void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]) {
-  struct json_array_element_s *element = array->start;
-  for (int i = 0; i < 3 && element; i++) {
-    struct json_number_s *num = element->value->payload;
-    output[i] = (int32_t) strtol(num->number, NULL, 10);
-    element = element->next;
-  }
 }
 
 static int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metadata) {
-  struct json_value_s *root = json_parse(json_string, strlen(json_string));
-  if (!root) {
-    printf("Failed to parse JSON!\n");
+    json_object *root = json_tokener_parse(json_string);
+    if (!root) {
+        printf("Failed to parse JSON!\n");
+        return 1;
+    }
+
+    json_object *shapes_value;
+    if (json_object_object_get_ex(root, "shape", &shapes_value) &&
+        json_object_is_type(shapes_value, json_type_array)) {
+        vs__json_parse_int32_array(shapes_value, metadata->shape);
+    }
+
+    json_object *chunks_value;
+    if (json_object_object_get_ex(root, "chunks", &chunks_value) &&
+        json_object_is_type(chunks_value, json_type_array)) {
+        vs__json_parse_int32_array(chunks_value, metadata->chunks);
+    }
+
+    json_object *compressor_value;
+    if (json_object_object_get_ex(root, "compressor", &compressor_value) &&
+        json_object_is_type(compressor_value, json_type_object)) {
+
+        json_object *blocksize;
+        if (json_object_object_get_ex(compressor_value, "blocksize", &blocksize)) {
+            metadata->compressor.blocksize = json_object_get_int(blocksize);
+        }
+
+        json_object *clevel;
+        if (json_object_object_get_ex(compressor_value, "clevel", &clevel)) {
+            metadata->compressor.clevel = json_object_get_int(clevel);
+        }
+
+        json_object *cname;
+        if (json_object_object_get_ex(compressor_value, "cname", &cname)) {
+            const char *cname_str = json_object_get_string(cname);
+            strncpy(metadata->compressor.cname, cname_str, sizeof(metadata->compressor.cname) - 1);
+            metadata->compressor.cname[sizeof(metadata->compressor.cname) - 1] = '\0';
+        }
+
+        json_object *id;
+        if (json_object_object_get_ex(compressor_value, "id", &id)) {
+            const char *id_str = json_object_get_string(id);
+            strncpy(metadata->compressor.id, id_str, sizeof(metadata->compressor.id) - 1);
+            metadata->compressor.id[sizeof(metadata->compressor.id) - 1] = '\0';
+        }
+
+        json_object *shuffle;
+        if (json_object_object_get_ex(compressor_value, "shuffle", &shuffle)) {
+            metadata->compressor.shuffle = json_object_get_int(shuffle);
+        }
+    }
+
+    json_object *dtype_value;
+    if (json_object_object_get_ex(root, "dtype", &dtype_value)) {
+        const char *dtype_str = json_object_get_string(dtype_value);
+        strncpy(metadata->dtype, dtype_str, sizeof(metadata->dtype) - 1);
+        metadata->dtype[sizeof(metadata->dtype) - 1] = '\0';
+    }
+
+    json_object *fill_value;
+    if (json_object_object_get_ex(root, "fill_value", &fill_value)) {
+        metadata->fill_value = json_object_get_int(fill_value);
+    }
+
+    json_object *order_value;
+    if (json_object_object_get_ex(root, "order", &order_value)) {
+        const char *order_str = json_object_get_string(order_value);
+        if (order_str && order_str[0]) {
+            metadata->order = order_str[0];
+        }
+    }
+
+    json_object *format_value;
+    if (json_object_object_get_ex(root, "zarr_format", &format_value)) {
+        metadata->zarr_format = json_object_get_int(format_value);
+    }
+
+    json_object_put(root);
     return 0;
-  }
-
-  struct json_object_s *object = root->payload;
-
-  struct json_value_s *shapes_value = vs__json_find_value(object, "shape");
-  if (shapes_value && shapes_value->type == json_type_array) {
-    vs__json_parse_int32_array(shapes_value->payload, metadata->shape);
-  }
-
-  struct json_value_s *chunks_value = vs__json_find_value(object, "chunks");
-  if (chunks_value && chunks_value->type == json_type_array) {
-    vs__json_parse_int32_array(chunks_value->payload, metadata->chunks);
-  }
-
-  struct json_value_s *compressor_value = vs__json_find_value(object, "compressor");
-  if (compressor_value && compressor_value->type == json_type_object) {
-    struct json_object_s *compressor = compressor_value->payload;
-
-    struct json_value_s *blocksize = vs__json_find_value(compressor, "blocksize");
-    if (blocksize && blocksize->type == json_type_number) {
-      struct json_number_s *num = blocksize->payload;
-      metadata->compressor.blocksize = (int32_t) strtol(num->number, NULL, 10);
-    }
-
-    struct json_value_s *clevel = vs__json_find_value(compressor, "clevel");
-    if (clevel && clevel->type == json_type_number) {
-      struct json_number_s *num = clevel->payload;
-      metadata->compressor.clevel = (int32_t) strtol(num->number, NULL, 10);
-    }
-
-    struct json_value_s *cname = vs__json_find_value(compressor, "cname");
-    if (cname && cname->type == json_type_string) {
-      struct json_string_s *str = cname->payload;
-      strncpy(metadata->compressor.cname, str->string, sizeof(metadata->compressor.cname) - 1);
-    }
-
-    struct json_value_s *id = vs__json_find_value(compressor, "id");
-    if (id && id->type == json_type_string) {
-      struct json_string_s *str = id->payload;
-      strncpy(metadata->compressor.id, str->string, sizeof(metadata->compressor.id) - 1);
-    }
-
-    struct json_value_s *shuffle = vs__json_find_value(compressor, "shuffle");
-    if (shuffle && shuffle->type == json_type_number) {
-      struct json_number_s *num = shuffle->payload;
-      metadata->compressor.shuffle = (int32_t) strtol(num->number, NULL, 10);
-    }
-  }
-
-  struct json_value_s *dtype_value = vs__json_find_value(object, "dtype");
-  if (dtype_value && dtype_value->type == json_type_string) {
-    struct json_string_s *str = dtype_value->payload;
-    strncpy(metadata->dtype, str->string, sizeof(metadata->dtype) - 1);
-  }
-
-  struct json_value_s *fill_value = vs__json_find_value(object, "fill_value");
-  if (fill_value && fill_value->type == json_type_number) {
-    struct json_number_s *num = fill_value->payload;
-    metadata->fill_value = (int32_t) strtol(num->number, NULL, 10);
-  }
-
-  struct json_value_s *order_value = vs__json_find_value(object, "order");
-  if (order_value && order_value->type == json_type_string) {
-    struct json_string_s *str = order_value->payload;
-    metadata->order = str->string[0];
-  }
-
-  struct json_value_s *format_value = vs__json_find_value(object, "zarr_format");
-  if (format_value && format_value->type == json_type_number) {
-    struct json_number_s *num = format_value->payload;
-    metadata->zarr_format = (int32_t) strtol(num->number, NULL, 10);
-  }
-
-  free(root);
-  return 1;
 }
 
 zarr_metadata vs_zarr_parse_zarray(char *path) {
