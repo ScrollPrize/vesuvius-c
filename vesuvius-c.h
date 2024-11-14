@@ -214,8 +214,8 @@ size_t write_data(void *ptr, size_t size, size_t nmemb, MemoryChunk *chunk) {
 // Initialize the vesuvius library with dynamic URL construction
 void init_vesuvius(const char *scroll_id, int energy, double resolution) {
     // Construct the ZARR_URL based on the provided parameters, stopping at the directory
-    snprintf(ZARR_URL, URL_SIZE, 
-             "https://dl.ash2txt.org/other/dev/scrolls/%s/volumes/%dkeV_%.2fum.zarr/0/", 
+    snprintf(ZARR_URL, URL_SIZE,
+             "https://dl.ash2txt.org/other/dev/scrolls/%s/volumes/%dkeV_%.2fum.zarr/0/",
              scroll_id, energy, resolution);
 
     // Load shape and chunk size from the dynamically constructed ZARR_URL
@@ -938,9 +938,7 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
 // - a non zero return code indicates failure
 // - a NULL pointer indicates failure for functions that return a pointer
 
-// in order to use Vesuvius-c, define VESUVIUS_IMPL in one .c file and then #include "vesuvius-c.h" 
-// in order to use curl, which depends on libcurl and ssl, define VESUVIUS_CURL_IMPL 
-// in order to use zarr, which depends on cblosc2 and json.h, define VESUVIUS_ZARR_IMPL
+// in order to use Vesuvius-c, define VESUVIUS_IMPL in one .c file and then #include "vesuvius-c.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -955,26 +953,30 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
 #include <errno.h>
 #include <time.h>
 
+#include <curl/curl.h>
+#include <blosc2.h>
+#include <json.h>
+
 #if defined(__linux__) || defined(__GLIBC__)
 #include <execinfo.h>
 #endif
 
-#ifdef VESUVIUS_CURL_IMPL
-#include <curl/curl.h>
-#endif
-
-#ifdef VESUVIUS_ZARR_IMPL
-#include <blosc2.h>
-#include <json.h>
-#endif
-
-
 #ifdef NDEBUG
-#define ASSERT(expr) ((void)0)
+#define ASSERT(expr, msg, ...) ((void)0)
 #else
-#define ASSERT(expr) \
-((expr) ? ((void)0) : vs__assert_fail_with_backtrace(#expr, __FILE__, __LINE__, __func__))
+#define ASSERT(expr, msg, ...) do{if(!(expr)){fprintf(stderr,msg __VA_OPT__(,)#__VA_ARGS__); vs__assert_fail_with_backtrace(#expr, __FILE__, __LINE__, __func__);}}while(0)
 #endif
+
+#ifdef MAX
+#undef MAX
+#endif
+#define MAX(a,b) ({__auto_type _a = (a); __auto_type _b = (b); _a > _b ? _a : _b;})
+
+
+#ifdef MIN
+#undef MIN
+#endif
+#define MIN(a,b) ({__auto_type _a = (a); __auto_type _b = (b); _a < _b ? _a : _b;})
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -1004,12 +1006,10 @@ typedef struct hist_stats {
     f32 std_dev;
 } hist_stats;
 
-#ifdef VESUVIUS_CURL_IMPL
 typedef struct {
     char* buffer;
     size_t size;
 } DownloadBuffer;
-#endif
 
 typedef struct chunk {
     int dims[3];
@@ -1124,23 +1124,7 @@ typedef struct {
     char errorMsg[256];
 } TiffImage;
 
-// vol
-// A volume is an entire scroll
-//   - for Scroll 1 it is all 14376 x 7888 x 8096 voxels
-//   - the dtype is uint8 or uint16
-//
-
-typedef struct volume {
-    s32 dims[3];
-    bool is_zarr;
-    bool is_tif_stack;
-    bool uses_3d_tif;
-    char* cache_dir;
-    u64 vol_id;
-} volume;
-
 //zarr
-#ifdef VESUVIUS_ZARR_IMPL
 typedef struct zarr_compressor_settings {
     int32_t blocksize;
     int32_t clevel;
@@ -1158,7 +1142,28 @@ typedef struct zarr_metadata {
     char order; // Single character 'C' or 'F'
     int32_t zarr_format;
 } zarr_metadata;
-#endif
+
+// vol
+// A volume is an entire scroll at a given pixel density
+//     - for Scroll 1 it is all 14376 x 7888 x 8096 voxels
+//         - for the 2x scaled down Scroll 1 you would need a separate volume
+//     - the dtype is uint8
+//     - wraps a zarr array
+//     - a volume takes a url, a local directory, or both
+//         - the url and path should both contain the .zarray
+//             - "/path/to/my/zarr" would contain "/path/to/my/zarr/.zarray"
+//             - "https://example.com/path/to/my/zarr" would contain "https://example.com/path/to/my/zarr/.zarray"
+//         - if only the url is given, all blocks will be downloaded and kept in memory
+//         - if the url and cache are given, blocks are read from the cache if they exist, otherwise downloaded
+//             and written to disk
+//         - if only the cache is given, blocks will be read from disk and will error upon trying to read a non existant block
+
+
+typedef struct volume {
+    char *cache_dir;
+    char *url;
+    zarr_metadata metadata;
+} volume;
 
 // Public APIs
 // - These are exported and meant to be used by users of vesuvius-c.h
@@ -1270,17 +1275,17 @@ int vs_vcps_write(const char* filename,
                const void* data, const char* src_type, const char* dst_type);
 
 // volume
-volume *vs_vol_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool uses_3d_tif, char* cache_dir, u64 vol_id);
+volume* vs_vol_new(char* cache_dir, char* url);
 chunk* vs_vol_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]);
 
 // zarr
-#ifdef VESUVIUS_ZARR_IMPL
 zarr_metadata vs_zarr_parse_zarray(char *path);
 chunk* vs_zarr_read_chunk(char* path, zarr_metadata metadata);
+int vs_zarr_compress_chunk(chunk* c, zarr_metadata metadata, void** compressed_data);
 chunk* vs_zarr_decompress_chunk(long size, void* compressed_data, zarr_metadata metadata);
 int vs_zarr_parse_metadata(const char *json_string, zarr_metadata *metadata);
-
-#endif
+chunk* vs_zarr_fetch_block(char* url, zarr_metadata metadata);
+int vs_zarr_write_chunk(char *path, zarr_metadata metadata, chunk* c);
 
 // vesuvius specific
 chunk *vs_tiff_to_chunk(const char *tiffpath);
@@ -1367,11 +1372,8 @@ static int vs__vcps_read_binary_data(FILE* fp, void* out_data, const char* src_t
 static int vs__vcps_write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count);
 
 //zarr
-#ifdef VESUVIUS_ZARR_IMPL
 static struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key);
 static void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]);
-#endif
-
 
 static void vs__trim(char* str) {
   char* end;
@@ -1501,7 +1503,6 @@ f32 vs_chamfer_distance(const f32* set1, s32 size1, const f32* set2, s32 size2) 
 }
 
 //curl
-#ifdef VESUVIUS_CURL_IMPL
 static size_t vs__write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     DownloadBuffer *mem = userp;
@@ -1571,12 +1572,7 @@ long vs_download(const char* url, void** out_buffer) {
     *out_buffer = chunk.buffer;
     return chunk.size;
 }
-#else
-long vs_download(const char* url, void** out_buffer) {
-    printf("curl support must be enabled to download files\n");
-    return -1;
-}
-#endif
+
 
 // histogram
 histogram *vs_histogram_new(s32 num_bins, f32 min_value, f32 max_value) {
@@ -1770,7 +1766,6 @@ chunk *vs_chunk_new(int dims[static 3]) {
   chunk *ret = malloc(sizeof(chunk) + dims[0] * dims[1] * dims[2] * sizeof(float));
 
   if (ret == NULL) {
-    assert(false);
     return NULL;
   }
 
@@ -1788,7 +1783,6 @@ slice *vs_slice_new(int dims[static 2]) {
   slice *ret = malloc(sizeof(slice) + dims[0] * dims[1] * sizeof(float));
 
   if (ret == NULL) {
-    assert(false);
     return NULL;
   }
 
@@ -1816,6 +1810,43 @@ f32 vs_chunk_get(chunk *chunk, s32 z, s32 y, s32 x) {
 
 void vs_chunk_set(chunk *chunk, s32 z, s32 y, s32 x, f32 data) {
   chunk->data[z * chunk->dims[1] * chunk->dims[2] + y * chunk->dims[2] + x] = data;
+}
+
+int vs_chunk_graft(chunk* dest, chunk* src, s32 src_start[static 3], s32 dest_start[static 3], s32 dims[static 3]) {
+  ASSERT(dims[0] * dims[1] * dims[2] * 4 < 1024*1024*1024,"chunk size must be less than 1 gb");
+  if (!dest || !src || !src_start || !dest_start || !dims) {
+    return -1;
+  }
+
+  for (int i = 0; i < 3; i++) {
+    if (dims[i] <= 0) {
+      return -1;
+    }
+  }
+
+  for (int i = 0; i < 3; i++) {
+    if (src_start[i] < 0 ||
+        src_start[i] + dims[i] > src->dims[i]) {
+      return -1;
+        }
+  }
+
+  for (int i = 0; i < 3; i++) {
+    if (dest_start[i] < 0 ||
+        dest_start[i] + dims[i] > dest->dims[i]) {
+      return -1;
+        }
+  }
+
+  for (int z = 0; z < dims[2]; z++) {
+    for (int y = 0; y < dims[1]; y++) {
+      for (int x = 0; x < dims[0]; x++) {
+        f32 value = vs_chunk_get(src, src_start[2] + z, src_start[1] + y, src_start[0] + x);
+        vs_chunk_set(dest, dest_start[2] + z, dest_start[1] + y, dest_start[0] + x, value);
+      }
+    }
+  }
+  return 0;
 }
 
 
@@ -2734,7 +2765,6 @@ static int vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd) {
 
 static int vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd) {
     printf("reading compressed data is not supported yet for nrrd\n");
-    assert("false");
     return 1;
     #if 0
     z_stream strm = {0};
@@ -4129,7 +4159,7 @@ TiffImage* vs_tiff_create(uint32_t width, uint32_t height, uint16_t depth,
     return img;
 }
 
-        
+
 // vcps
 
 static int vs__vcps_read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count) {
@@ -4313,13 +4343,9 @@ int vs_vcps_write(const char* filename,
 
 // vol
 
-volume *vs_vol_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool uses_3d_tif, char* cache_dir, u64 vol_id) {
-  //only 3d tiff chunks are currently supported
-  assert(is_tif_stack && uses_3d_tif);
-
+volume *vs_vol_new(char *cache_dir, char *url) {
   volume *ret = malloc(sizeof(volume));
   if (ret == NULL) {
-    assert(false);
     return NULL;
   }
 
@@ -4330,77 +4356,99 @@ volume *vs_vol_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool use
     }
   }
 
-  *ret = (volume){{dims[0], dims[1], dims[2]}, is_zarr, is_tif_stack, uses_3d_tif, cache_dir, vol_id};
+  void* zarray_buf = NULL;
+  if (url != NULL) {
+    char zarray_url[1024] = {'\0'};
+    snprintf(zarray_url,1023,"%s/.zarray",url);
+    printf("trying to read .zarray from %s",zarray_url);
+    if (vs_download(zarray_url, &zarray_buf) <= 0) {
+      printf("could not download .zarray file!\n");
+      return NULL;
+    }
+  }
+  zarr_metadata metadata;
+  if (vs_zarr_parse_metadata(zarray_buf,&metadata)) {
+    printf("failed to parse .zarray\n");
+    return NULL;
+  }
+
+  *ret = (volume){cache_dir, url, metadata};
+  free(zarray_buf);
   return ret;
 }
 
-chunk* vs_vol_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]) {
-  // stitching across chunks, be them tiff or zarr chunks, isn't just yet supported
-  // so for now we'll just force the position to be a multiple of 500
-  // and for dims to be <= 500
+chunk *vs_vol_get_chunk(volume *vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]) {
 
-  assert(chunk_pos[0] % 500 == 0);
-  assert(chunk_pos[1] % 500 == 0);
-  assert(chunk_pos[2] % 500 == 0);
-  assert(chunk_dims[0] <= 500);
-  assert(chunk_dims[1] <= 500);
-  assert(chunk_dims[2] <= 500);
+  ASSERT(chunk_dims[0] * chunk_dims[1]*chunk_dims[2]*4 < 1024*1024*1, "chunk must be less than 1 gb");
 
-  int z = chunk_pos[0] / 500;
-  int y = chunk_pos[1] / 500;
-  int x = chunk_pos[2] / 500;
+  chunk* ret = vs_chunk_new(chunk_dims);
 
-  char filename[1024] = {'\0'};
-  sprintf(filename, "cell_yxz_%03d_%03d_%03d.tif",y,x,z);
-  char filepath[1024] = {'\0'};
-  sprintf(filepath, "%s/%s",vol->cache_dir, filename);
+  int zstart = chunk_pos[0] / vol->metadata.chunks[0];
+  int ystart = chunk_pos[1] / vol->metadata.chunks[0];
+  int xstart = chunk_pos[2] / vol->metadata.chunks[0];
 
-  if (vs__path_exists(filepath)) {
-      chunk* ret = vs_tiff_to_chunk(filepath);
-      return ret;
-  } else {
-#ifdef VESUVIUS_CURL_IMPL
-      char url[1024] = {'\0'};
-      void* buf;
+  int zend = (chunk_pos[0] + chunk_dims[0] - 1) / vol->metadata.chunks[0];
+  int yend = (chunk_pos[1] + chunk_dims[1] - 1) / vol->metadata.chunks[1];
+  int xend = (chunk_pos[2] + chunk_dims[2] - 1) / vol->metadata.chunks[2];
 
-      sprintf(url, "https://dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/volume_grids/20230205180739/%s",filename);
+  for (int z = zstart; z <= zend; z++) {
+    for (int y = ystart; y <= yend; y++) {
+      for (int x = xstart; x <= xend; x++) {
+        char blockpath[1024] = {'\0'};
+        chunk* c = NULL;
+        if (vol->cache_dir) {
+          snprintf(blockpath, 1023, "%s/%d/%d/%d", vol->cache_dir, z, y, x);
+          printf("checking for zarr block at %s\n",blockpath);
+          if (vs__path_exists(blockpath)) {
+            printf("reading %s from disk\n",blockpath);
+            //TODO: read from disk lol
+          } else if (vol->url){
+            char url[1024] = {'\0'};
+            snprintf(url,1023,"%s/%d/%d/%d",vol->url,z,y,x);
+            printf("downloading block from %s\n",url);
+            c = vs_zarr_fetch_block(url, vol->metadata);
+            if (c == NULL) {
+              //NOTE: this is not necessarily an error. Some logical blocks do not exist physically because
+              //they are all zero, and zarr will by default not keep all zero chunk files. so for now we'll assume
+              //that is the case and just skip it
+              printf("could not download block from %s\n",url);
+            } else {
+              printf("downloaded block from %s\n",url);
 
-      printf("downloading data from %s\n",url);
+              s32 src_start[3] = {
+                MAX(0, chunk_pos[0] - z * vol->metadata.chunks[0]),
+                MAX(0, chunk_pos[1] - y * vol->metadata.chunks[1]),
+                MAX(0, chunk_pos[2] - x * vol->metadata.chunks[2])
+              };
 
-      long len = vs_download(url, &buf);
-      if (len < 0) {
-          // download failed
-          return NULL;
-      }
-      printf("len %d\n",(s32)len);
-      //todo: is this applicable for all of our 3d tiff files from the data server?
-      if (len != 250073508 ) {
-          printf("warning! did not download the seemingly correct length from %s\n",url);
-      }
+              s32 dest_start[3] = {
+                z * vol->metadata.chunks[0] - chunk_pos[0],
+                y * vol->metadata.chunks[1] - chunk_pos[1],
+                x * vol->metadata.chunks[2] - chunk_pos[2]
+              };
 
-      if (vol->cache_dir != NULL) {
-
-          printf("saving data to %s\n",filepath);
-          FILE* fp = fopen(filepath, "wb");
-          if (fp == NULL) {
-              printf("could not open %s for writing\n",filepath);
-              return NULL;
+              s32 copy_dims[3] = {
+                MIN(vol->metadata.chunks[0] - src_start[0], chunk_dims[0] - dest_start[0]),
+                MIN(vol->metadata.chunks[1] - src_start[1], chunk_dims[1] - dest_start[1]),
+                MIN(vol->metadata.chunks[2] - src_start[2], chunk_dims[2] - dest_start[2])
+              };
+              vs_chunk_graft(ret, c, src_start, dest_start, copy_dims);
+            }
+            printf("writing chunk to %s\n",blockpath);
+            //TODO: actually write the data to disk
+          } else {
+            printf("cannot find zarr block in disk cache and can't download");
+            return NULL;
           }
-          size_t sz = fwrite(buf, 1, len, fp);
-          printf("wrote: %lld bytes to %s\n",sz, filepath);
-          if (sz != len) {
-              printf("could not write all data to %s\n",filepath);
-          }
+        }
       }
-#endif
+    }
   }
-  return NULL;
+  return ret;
 }
 
-        
-// zarr
 
-#ifdef VESUVIUS_ZARR_IMPL
+// zarr
 
 static struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key) {
   struct json_object_element_s *element = obj->start;
@@ -4421,6 +4469,20 @@ static void vs__json_parse_int32_array(struct json_array_s *array, int32_t outpu
     output[i] = (int32_t) strtol(num->number, NULL, 10);
     element = element->next;
   }
+}
+
+chunk* vs_zarr_fetch_block(char* url, zarr_metadata metadata) {
+
+  void* compressed_buf;
+  long compressed_size;
+  if ((compressed_size = vs_download(url, &compressed_buf)) <= 0) {
+    return NULL;
+  }
+  chunk* mychunk = vs_zarr_decompress_chunk(compressed_size, compressed_buf,metadata);
+  if (mychunk == NULL) {
+    return NULL;
+  }
+  return mychunk;
 }
 
 int vs_zarr_parse_metadata(const char *json_string, zarr_metadata *metadata) {
@@ -4565,26 +4627,27 @@ chunk* vs_zarr_decompress_chunk(long size, void* compressed_data, zarr_metadata 
     int dtype_size = 0;
     if(strcmp(metadata.dtype,"|u1") == 0) {
         dtype_size = 1;
-    } else if (strcmp(metadata.dtype,"|u2") == 0){
+    } else if (strcmp(metadata.dtype, "|u2") == 0) {
+        ASSERT(false,"16 bit zarr not currently supported");
         dtype_size = 2;
     } else {
         fprintf(stderr,"unsupported zarr format. Only unsigned 8 and unsigned 16 are supported\n");
     }
 
     unsigned char *decompressed_data = malloc(z * y * x * dtype_size);
-    int decompressed_size = blosc2_decompress(compressed_data, size, decompressed_data, z*y*x*dtype_size);
+    int decompressed_size = blosc2_decompress(compressed_data, size, decompressed_data, z * y * x * dtype_size);
     if (decompressed_size < 0) {
         fprintf(stderr, "Blosc2 decompression failed: %d\n", decompressed_size);
         free(compressed_data);
         free(decompressed_data);
         return NULL;
     }
-    chunk* ret = vs_chunk_new((s32[3]){z,y,x});
+    chunk *ret = vs_chunk_new((s32[3]){z, y, x});
 
     for (int z = 0; z < ret->dims[0]; z++) {
         for (int y = 0; y < ret->dims[1]; y++) {
             for (int x = 0; x < ret->dims[2]; x++) {
-                vs_chunk_set(ret,z,y,x,(f32)decompressed_data[z*ret->dims[1]*ret->dims[2] +y*ret->dims[2] + x]);
+                vs_chunk_set(ret, z, y, x, (f32) decompressed_data[z * ret->dims[1] * ret->dims[2] + y * ret->dims[2] + x]);
             }
         }
     }
@@ -4594,7 +4657,49 @@ chunk* vs_zarr_decompress_chunk(long size, void* compressed_data, zarr_metadata 
 }
 
 
-#endif
+int vs_zarr_write_chunk(char *path, zarr_metadata metadata, chunk* c) {
+    //TODO: implement me
+    //TODO: the directory to the file path might not exist. should we mkdir here or elsewhere?
+    printf("zarr chunk write not yet supported\n");
+    return 1;
+}
+
+int vs_zarr_compress_chunk(chunk* c, zarr_metadata metadata, void** compressed_data) {
+  ASSERT(c->dims[0] == metadata.chunks[0], "zarr block size mismatch with chunk dims");
+  ASSERT(c->dims[1] == metadata.chunks[1], "zarr block size mismatch with chunk dims");
+  ASSERT(c->dims[2] == metadata.chunks[2], "zarr block size mismatch with chunk dims");
+  int z = metadata.chunks[0];
+  int y = metadata.chunks[1];
+  int x = metadata.chunks[2];
+  int dtype_size = 0;
+  u8* decompressed_data = NULL;
+  if (strcmp(metadata.dtype, "|u1") == 0) {
+    dtype_size = 1;
+    decompressed_data = malloc(z*y*x);
+    for (int _z = 0; _z < z; _z++) {
+      for (int _y = 0; _y < y; _y++) {
+        for (int _x = 0; _x < x; _x++) {
+          decompressed_data[_z*y*x+_y*x+_x] = (u8) vs_chunk_get(c,_z,_y,_x);
+        }
+      }
+    }
+  } else if (strcmp(metadata.dtype, "|u2") == 0) {
+    ASSERT(false, "16 bit zarrs not currently supported");
+  } else {
+    fprintf(stderr, "unsupported zarr format. Only unsigned 8 is supported\n");
+  }
+  *compressed_data = malloc(z*y*x+BLOSC2_MAX_OVERHEAD);
+  int compressed_len = blosc2_compress(metadata.compressor.clevel,metadata.compressor.shuffle,dtype_size,decompressed_data,z*y*x,*compressed_data,z*y*x*BLOSC2_MAX_OVERHEAD);
+
+  if (compressed_len <= 0) {
+    fprintf(stderr, "Blosc2 compression failed: %d\n", compressed_len);
+    free(compressed_data);
+    free(decompressed_data);
+    return -1;
+  }
+  return compressed_len;
+}
+
 
 //vesuvius specific
 chunk *vs_tiff_to_chunk(const char *tiffpath) {
@@ -4656,54 +4761,6 @@ slice *vs_tiff_to_slice(const char *tiffpath, int index) {
   }
   return ret;
 }
-
-
-
-int vs_slice_fill(slice *slice, volume *vol, int start[static 2], int axis) {
-  assert(axis == 'z' || axis == 'y' || axis == 'x');
-  if (start[0] + slice->dims[0] < 0 || start[0] + slice->dims[0] > vol->dims[0]) {
-    assert(false);
-    return 1;
-  }
-  if (start[1] + slice->dims[1] < 0 || start[1] + slice->dims[1] > vol->dims[1]) {
-    assert(false);
-    return 1;
-  }
-
-  for (int y = 0; y < vol->dims[0]; y++) {
-    for (int x = 0; x < vol->dims[1]; x++) {
-      //TODO: actually get the data
-      slice->data[y * slice->dims[1] + x] = 0.0f;
-    }
-  }
-  return 0;
-}
-
-int vs_chunk_fill(chunk *chunk, volume *vol, int start[static 3]) {
-  if (start[0] + chunk->dims[0] < 0 || start[0] + chunk->dims[0] > vol->dims[0]) {
-    assert(false);
-    return 1;
-  }
-  if (start[1] + chunk->dims[1] < 0 || start[1] + chunk->dims[1] > vol->dims[1]) {
-    assert(false);
-    return 1;
-  }
-  if (start[2] + chunk->dims[2] < 0 || start[2] + chunk->dims[2] > vol->dims[2]) {
-    assert(false);
-    return 1;
-  }
-
-  for (int z = 0; z < vol->dims[0]; z++) {
-    for (int y = 0; y < vol->dims[1]; y++) {
-      for (int x = 0; x < vol->dims[2]; x++) {
-        //TODO: actually get the data
-        chunk->data[z * chunk->dims[1] * chunk->dims[2] + y * chunk->dims[2] + x] = 0.0f;
-      }
-    }
-  }
-  return 0;
-}
-
 
 
 #endif // defined(VESUVIUS_IMPL)
