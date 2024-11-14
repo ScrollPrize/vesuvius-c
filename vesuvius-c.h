@@ -1,5 +1,27 @@
+#define VESUVIUS_IMPL
+
 #ifndef VESUVIUS_H
 #define VESUVIUS_H
+
+// Vesuvius-c notes:
+// - in order to use Vesuvius-c, define VESUVIUS_IMPL in one .c file and then #include "vesuvius-c.h"
+// - when passing pointers to a _new function in order to fill out fields in the struct (e.g. vs_mesh_new)
+//   the struct will take ownership of the pointer and the pointer shall be cleaned up in the _free function.
+//   The caller loses ownership of the pointer. This does NOT include char* for strings like paths or URLs
+//     - e.g. vs_vol_new(char* cache, char* url) does _not_ subsume either pointer. If they are not literals
+//       then the caller is responsible for cleaning up the char*
+// - index order is in Z Y X order
+// - a 0 return code indicates success for functions that do NOT return a pointer
+// - a non zero return code _can_ indicate failure
+//    - this is often on a case by case basis, but is quite often the case for functions that take out parameters
+//      or are otherwise side-effect-ful
+// - a NULL pointer indicates failure for functions that return a pointer
+// - It is the caller's responsibility to clean up pointers returned by Vesuvius APIs
+//   - some structures, such as chunk and volume, have custom _free functions which should be called
+//     which will free any pointers contained within the structure that have been allocated, f.ex. in _new
+//     AND will also free the pointer itself
+//   - this applies to both function return values and out parameters passed as pointer pointers
+//   - for pointers to primitive types the caller should just call free() on the pointer
 
 #include <ctype.h>
 #include <limits.h>
@@ -8,7 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <curl/curl.h>
-#include <json-c/json.h>
+//#include <json-c/json.h>
 #include <blosc2.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -152,6 +174,7 @@ static int fetch_metadata(const char *url, char *buffer) {
 
 // Parses the metadata JSON to retrieve chunk sizes and shape
 static int parse_metadata(const char *buffer) {
+#if 0
     struct json_object *parsed_json, *chunks, *shape;
 
     parsed_json = json_tokener_parse(buffer);
@@ -180,6 +203,7 @@ static int parse_metadata(const char *buffer) {
 
     json_object_put(parsed_json);  // Free JSON object
     return 0;
+#endif
 }
 
 // Public function to initialize chunk sizes and shape
@@ -928,18 +952,6 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
     }
 }
 
-
-//vesuvius notes:
-// - when passing pointers to a _new function in order to fill out fields in the struct (e.g. vs_mesh_new)
-//   the struct will take ownership of the pointer and the pointer shall be cleaned up in the _free function.
-//   The caller loses ownership of the pointer
-// - index order is in Z Y X order
-// - a 0 return code indicates success for functions that do NOT return a pointer
-// - a non zero return code indicates failure
-// - a NULL pointer indicates failure for functions that return a pointer
-
-// in order to use Vesuvius-c, define VESUVIUS_IMPL in one .c file and then #include "vesuvius-c.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -955,7 +967,7 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
 
 #include <curl/curl.h>
 #include <blosc2.h>
-#include <json.h>
+#include "json.h"
 
 #if defined(__linux__) || defined(__GLIBC__)
 #include <execinfo.h>
@@ -970,13 +982,13 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
 #ifdef MAX
 #undef MAX
 #endif
-#define MAX(a,b) ({__auto_type _a = (a); __auto_type _b = (b); _a > _b ? _a : _b;})
+#define MAX(a,b) (a > b ? a : b)
 
 
 #ifdef MIN
 #undef MIN
 #endif
-#define MIN(a,b) ({__auto_type _a = (a); __auto_type _b = (b); _a < _b ? _a : _b;})
+#define MIN(a,b) (a < b ? a : b)
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -1149,19 +1161,16 @@ typedef struct zarr_metadata {
 //         - for the 2x scaled down Scroll 1 you would need a separate volume
 //     - the dtype is uint8
 //     - wraps a zarr array
-//     - a volume takes a url, a local directory, or both
+//     - a volume takes a url and a local directory
 //         - the url and path should both contain the .zarray
 //             - "/path/to/my/zarr" would contain "/path/to/my/zarr/.zarray"
 //             - "https://example.com/path/to/my/zarr" would contain "https://example.com/path/to/my/zarr/.zarray"
-//         - if only the url is given, all blocks will be downloaded and kept in memory
-//         - if the url and cache are given, blocks are read from the cache if they exist, otherwise downloaded
-//             and written to disk
-//         - if only the cache is given, blocks will be read from disk and will error upon trying to read a non existant block
+//         - blocks are read from the cache if they exist, otherwise downloaded and written to disk
 
 
 typedef struct volume {
-    char *cache_dir;
-    char *url;
+    char cache_dir [1024];
+    char url [1024];
     zarr_metadata metadata;
 } volume;
 
@@ -1276,6 +1285,7 @@ int vs_vcps_write(const char* filename,
 
 // volume
 volume* vs_vol_new(char* cache_dir, char* url);
+void vs_vol_free(volume* vol);
 chunk* vs_vol_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]);
 
 // zarr
@@ -1389,37 +1399,148 @@ static bool vs__str_starts_with(const char* str, const char* prefix) {
 }
 
 static int vs__mkdir_p(const char* path) {
-  char tmp[1024];
-  char* p = NULL;
-  size_t len;
+    char tmp[1024];
+    char* p = NULL;
+    size_t len;
+    int status = 0;
 
-  snprintf(tmp, sizeof(tmp), "%s", path);
-  len = strlen(tmp);
-  if (tmp[len - 1] == '/') {
-    tmp[len - 1] = 0;
-  }
-
-  for (p = tmp + 1; *p; p++) {
-    if (*p == '/') {
-      *p = 0;
-#ifdef _WIN32
-      mkdir(tmp);
-#else
-      mkdir(tmp, 0755);
-#endif
-      *p = '/';
+    // Check for NULL path
+    if (path == NULL) {
+        return 1;
     }
-  }
+
+    // Copy path to temporary buffer
+    if (snprintf(tmp, sizeof(tmp), "%s", path) >= sizeof(tmp)) {
+        return 1;  // Path too long
+    }
+
+    len = strlen(tmp);
+    if (len == 0) {
+        return 1;  // Empty path
+    }
+
+    // Remove trailing slash if present
+    if (tmp[len - 1] == '/') {
+        tmp[len - 1] = 0;
+    }
+
+    // Handle absolute path
+    p = (tmp[0] == '/') ? tmp + 1 : tmp;
+
+    // Create parent directories
+    for (; *p; p++) {
+        if (*p == '/') {
+            *p = 0;  // Temporarily terminate string at this position
 
 #ifdef _WIN32
-  return (mkdir(tmp) == 0 || errno == EEXIST) ? 0 : 1;
+            status = mkdir(tmp);
 #else
-  return (mkdir(tmp, 0755) == 0 || errno == EEXIST) ? 0 : 1;
+            status = mkdir(tmp, 0755);
 #endif
+            // Ignore "Already exists" error, fail on other errors
+            if (status != 0 && errno != EEXIST) {
+                return 1;
+            }
+
+            *p = '/';  // Restore the slash
+        }
+    }
+
+    // Create the final directory
+#ifdef _WIN32
+    status = mkdir(tmp);
+#else
+    status = mkdir(tmp, 0755);
+#endif
+
+    // Return 0 if directory was created or already exists
+    return (status == 0 || errno == EEXIST) ? 0 : 1;
 }
 
 static bool vs__path_exists(const char *path) {
     return access(path, F_OK) == 0 ? true : false;
+}
+
+static char* vs__basename(const char* path) {
+    if (path == NULL) {
+        return NULL;
+    }
+
+    // Handle empty string
+    if (path[0] == '\0') {
+        char* result = malloc(2);
+        if (result) {
+            strcpy(result, ".");
+        }
+        return result;
+    }
+
+    // Create a copy of the path that we can modify
+    char* path_copy = strdup(path);
+    if (path_copy == NULL) {
+        return NULL;
+    }
+
+    // Remove trailing slashes
+    size_t len = strlen(path_copy);
+    while (len > 1 && path_copy[len - 1] == '/') {
+        path_copy[--len] = '\0';
+    }
+
+    // Find the last separator
+    char* last_slash = strrchr(path_copy, '/');
+
+    // Handle different cases
+    char* result;
+    if (last_slash == NULL) {
+        // No slash found - return "."
+        result = malloc(2);
+        if (result) {
+            strcpy(result, ".");
+        }
+    } else if (last_slash == path_copy) {
+        // Slash is at the beginning - return "/"
+        result = malloc(2);
+        if (result) {
+            strcpy(result, "/");
+        }
+    } else {
+        // Normal case - return everything up to the last slash
+        *last_slash = '\0';
+        result = strdup(path_copy);
+    }
+
+    free(path_copy);
+    return result;
+}
+
+static char* vs__filename(const char* path) {
+    if (path == NULL) {
+        return NULL;
+    }
+
+    // Find the last separator
+    const char* last_slash = strrchr(path, '/');
+
+    if (last_slash == NULL) {
+        // No slash found - return copy of entire string
+        return strdup(path);
+    }
+
+    // Move past the slash to get the last component
+    last_slash++;
+
+    // Return empty string if the path ends in a slash
+    if (*last_slash == '\0') {
+        char* result = malloc(1);
+        if (result) {
+            result[0] = '\0';
+        }
+        return result;
+    }
+
+    // Return copy of everything after the last slash
+    return strdup(last_slash);
 }
 
 
@@ -1813,7 +1934,6 @@ void vs_chunk_set(chunk *chunk, s32 z, s32 y, s32 x, f32 data) {
 }
 
 int vs_chunk_graft(chunk* dest, chunk* src, s32 src_start[static 3], s32 dest_start[static 3], s32 dims[static 3]) {
-  ASSERT(dims[0] * dims[1] * dims[2] * 4 < 1024*1024*1024,"chunk size must be less than 1 gb");
   if (!dest || !src || !src_start || !dest_start || !dims) {
     return -1;
   }
@@ -1838,11 +1958,11 @@ int vs_chunk_graft(chunk* dest, chunk* src, s32 src_start[static 3], s32 dest_st
         }
   }
 
-  for (int z = 0; z < dims[2]; z++) {
+  for (int z = 0; z < dims[0]; z++) {
     for (int y = 0; y < dims[1]; y++) {
-      for (int x = 0; x < dims[0]; x++) {
-        f32 value = vs_chunk_get(src, src_start[2] + z, src_start[1] + y, src_start[0] + x);
-        vs_chunk_set(dest, dest_start[2] + z, dest_start[1] + y, dest_start[0] + x, value);
+      for (int x = 0; x < dims[2]; x++) {
+        f32 value = vs_chunk_get(src, src_start[0] + z, src_start[1] + y, src_start[02] + x);
+        vs_chunk_set(dest, dest_start[0] + z, dest_start[1] + y, dest_start[2] + x, value);
       }
     }
   }
@@ -4349,6 +4469,7 @@ volume *vs_vol_new(char *cache_dir, char *url) {
     return NULL;
   }
 
+
   if (cache_dir != NULL) {
     if (vs__mkdir_p(cache_dir)) {
       printf("Could not mkdir %s\n",cache_dir);
@@ -4372,14 +4493,21 @@ volume *vs_vol_new(char *cache_dir, char *url) {
     return NULL;
   }
 
-  *ret = (volume){cache_dir, url, metadata};
+  strncpy(ret->url,url,sizeof(ret->url));
+  strncpy(ret->cache_dir,cache_dir,sizeof(ret->cache_dir));
+  ret->metadata = metadata;
+
   free(zarray_buf);
   return ret;
 }
 
-chunk *vs_vol_get_chunk(volume *vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]) {
+void vs_vol_free(volume* vol) {
+    if (vol) {
+        free(vol);
+    }
+}
 
-  ASSERT(chunk_dims[0] * chunk_dims[1]*chunk_dims[2]*4 < 1024*1024*1, "chunk must be less than 1 gb");
+chunk *vs_vol_get_chunk(volume *vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]) {
 
   chunk* ret = vs_chunk_new(chunk_dims);
 
@@ -4394,51 +4522,58 @@ chunk *vs_vol_get_chunk(volume *vol, s32 chunk_pos[static 3], s32 chunk_dims[sta
   for (int z = zstart; z <= zend; z++) {
     for (int y = ystart; y <= yend; y++) {
       for (int x = xstart; x <= xend; x++) {
-        char blockpath[1024] = {'\0'};
-        chunk* c = NULL;
-        if (vol->cache_dir) {
+          char blockpath[1024] = {'\0'};
+          chunk* c = NULL;
           snprintf(blockpath, 1023, "%s/%d/%d/%d", vol->cache_dir, z, y, x);
           printf("checking for zarr block at %s\n",blockpath);
           if (vs__path_exists(blockpath)) {
-            printf("reading %s from disk\n",blockpath);
-            //TODO: read from disk lol
-          } else if (vol->url){
-            char url[1024] = {'\0'};
-            snprintf(url,1023,"%s/%d/%d/%d",vol->url,z,y,x);
-            printf("downloading block from %s\n",url);
-            c = vs_zarr_fetch_block(url, vol->metadata);
-            if (c == NULL) {
+              printf("reading %s from disk\n",blockpath);
+              c = vs_zarr_read_chunk(blockpath,vol->metadata);
+              if (c == NULL) {
+                  printf("failed to read zarr chunk from %s\n",blockpath);
+                  return NULL;
+              }
+              //TODO: actually read from disk
+          } else {
+          char url[1024] = {'\0'};
+          snprintf(url,1023,"%s/%d/%d/%d",vol->url,z,y,x);
+          printf("downloading block from %s\n",url);
+          c = vs_zarr_fetch_block(url, vol->metadata);
+          if (c == NULL) {
               //NOTE: this is not necessarily an error. Some logical blocks do not exist physically because
               //they are all zero, and zarr will by default not keep all zero chunk files. so for now we'll assume
               //that is the case and just skip it
               printf("could not download block from %s\n",url);
-            } else {
+          } else {
               printf("downloaded block from %s\n",url);
 
               s32 src_start[3] = {
-                MAX(0, chunk_pos[0] - z * vol->metadata.chunks[0]),
-                MAX(0, chunk_pos[1] - y * vol->metadata.chunks[1]),
-                MAX(0, chunk_pos[2] - x * vol->metadata.chunks[2])
-              };
+                  MAX(0, chunk_pos[0] - z * vol->metadata.chunks[0]),
+                  MAX(0, chunk_pos[1] - y * vol->metadata.chunks[1]),
+                  MAX(0, chunk_pos[2] - x * vol->metadata.chunks[2])
+                };
 
               s32 dest_start[3] = {
-                z * vol->metadata.chunks[0] - chunk_pos[0],
-                y * vol->metadata.chunks[1] - chunk_pos[1],
-                x * vol->metadata.chunks[2] - chunk_pos[2]
-              };
+                  z * vol->metadata.chunks[0] - chunk_pos[0],
+                  y * vol->metadata.chunks[1] - chunk_pos[1],
+                  x * vol->metadata.chunks[2] - chunk_pos[2]
+                };
 
               s32 copy_dims[3] = {
-                MIN(vol->metadata.chunks[0] - src_start[0], chunk_dims[0] - dest_start[0]),
-                MIN(vol->metadata.chunks[1] - src_start[1], chunk_dims[1] - dest_start[1]),
-                MIN(vol->metadata.chunks[2] - src_start[2], chunk_dims[2] - dest_start[2])
-              };
-              vs_chunk_graft(ret, c, src_start, dest_start, copy_dims);
-            }
-            printf("writing chunk to %s\n",blockpath);
-            //TODO: actually write the data to disk
-          } else {
-            printf("cannot find zarr block in disk cache and can't download");
-            return NULL;
+                  MIN(vol->metadata.chunks[0] - src_start[0], chunk_dims[0] - dest_start[0]),
+                  MIN(vol->metadata.chunks[1] - src_start[1], chunk_dims[1] - dest_start[1]),
+                  MIN(vol->metadata.chunks[2] - src_start[2], chunk_dims[2] - dest_start[2])
+                };
+              if (vs_chunk_graft(ret, c, src_start, dest_start, copy_dims)) {
+                  printf("failed to graft chunk\n");
+                  return NULL;
+              }
+              printf("writing chunk to %s\n",blockpath);
+              if (vs_zarr_write_chunk(blockpath,vol->metadata,c)) {
+                  printf("failed to write zarr chunk to %s\n",blockpath);
+                  return NULL;
+              }
+              //TODO: actually write the data to disk
           }
         }
       }
@@ -4486,6 +4621,8 @@ chunk* vs_zarr_fetch_block(char* url, zarr_metadata metadata) {
 }
 
 int vs_zarr_parse_metadata(const char *json_string, zarr_metadata *metadata) {
+  //TODO: we need to determine which fields are mandatory and which aren't and error out
+  //upon failing to parse a mandatory field
   struct json_value_s *root = json_parse(json_string, strlen(json_string));
   if (!root) {
     printf("Failed to parse JSON!\n");
@@ -4658,10 +4795,24 @@ chunk* vs_zarr_decompress_chunk(long size, void* compressed_data, zarr_metadata 
 
 
 int vs_zarr_write_chunk(char *path, zarr_metadata metadata, chunk* c) {
-    //TODO: implement me
-    //TODO: the directory to the file path might not exist. should we mkdir here or elsewhere?
-    printf("zarr chunk write not yet supported\n");
-    return 1;
+    // the directory to the file path might not exist so we will mkdir for it here
+    // path should be a path to the chunk file name, e.g. 54keV_7.91um_Scroll1A.zarr/0/50/30/30 will write out
+    // a file called 30 in directory 30 in 50 in 0 in 54keV...
+
+    char* dirname = vs__basename(path);
+    if (vs__mkdir_p(dirname)) {
+        printf("failed to mkdirs to %s\n",dirname);
+    }
+    void* compressed_buf;
+    int len = vs_zarr_compress_chunk(c,metadata,&compressed_buf);
+    if (len <= 0) {
+        //TODO: len == 0 is probably an error, right?
+        return 1;
+    }
+    FILE* fp = fopen(path, "wb");
+    fwrite(compressed_buf,1,len,fp);
+    printf("wrote chunk to %s\n",path);
+    return 0;
 }
 
 int vs_zarr_compress_chunk(chunk* c, zarr_metadata metadata, void** compressed_data) {
