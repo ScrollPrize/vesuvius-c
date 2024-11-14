@@ -4812,6 +4812,9 @@ int vs_zarr_write_chunk(char *path, zarr_metadata metadata, chunk* c) {
     FILE* fp = fopen(path, "wb");
     fwrite(compressed_buf,1,len,fp);
     printf("wrote chunk to %s\n",path);
+    fclose(fp);
+    free(dirname);
+    free(compressed_buf);
     return 0;
 }
 
