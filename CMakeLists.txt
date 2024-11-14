@@ -10,19 +10,23 @@ add_executable(vesuvius_tests runtests.c)
 
 include_directories(third-party/json.h)
 
-find_package(Blosc2 REQUIRED)
-find_package(CURL REQUIRED)
-
 add_compile_options(-g3 -Wall -Wextra)
-if(UNIX)
-    add_link_options(-rdynamic)
-endif()
 
 # For some reason, when using _just_ link_libraries, no libraries are actually linked because ???
 # so just target_link_libraries for all executables
+if(UNIX)
+    # -rdynamic allows for the ASSERT backtrace to include symbols on UNIX
+    target_link_options(vesuvius_example PUBLIC -rdynamic)
+    target_link_options(vesuvius_example2 PUBLIC -rdynamic)
+    target_link_options(vesuvius_tests PUBLIC -rdynamic)
+endif()
+
 target_link_libraries(vesuvius_example PUBLIC -lm)
 target_link_libraries(vesuvius_example2 PUBLIC -lm)
 target_link_libraries(vesuvius_tests PUBLIC -lm)
+
+find_package(Blosc2 REQUIRED)
+find_package(CURL REQUIRED)
 
 if(Blosc2_FOUND)
     message(STATUS "Found blosc2. Building with Zarr support")
@@ -32,7 +36,7 @@ if(Blosc2_FOUND)
     target_link_libraries(vesuvius_tests PUBLIC Blosc2::Blosc2)
     add_compile_definitions(VESUVIUS_ZARR_IMPL)
 else()
-    message(STATUS "Blosc2 not found - building without Zarr support")
+    message(FATAL_ERROR "Blosc2 not found, please install blosc2")
 endif()
 
 if(CURL_FOUND)
@@ -42,7 +46,7 @@ if(CURL_FOUND)
     target_link_libraries(vesuvius_tests PUBLIC CURL::libcurl)
     add_compile_definitions(VESUVIUS_CURL_IMPL)
 else()
-    message(STATUS "CURL not found - building without CURL support")
+    message(FATAL_ERROR "CURL not found, please install curl")
 endif()
 
 
