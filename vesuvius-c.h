@@ -1174,6 +1174,20 @@ typedef struct volume {
     zarr_metadata metadata;
 } volume;
 
+
+typedef enum {
+    LOG_INFO,
+    LOG_WARN,
+    LOG_ERROR,
+    LOG_FATAL
+} vs__log_level_e;
+
+#define LOG_INFO(...) vs__log_msg(LOG_INFO, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+#define LOG_WARN(...) vs__log_msg(LOG_WARN, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+#define LOG_ERROR(...) vs__log_msg(LOG_ERROR, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+#define LOG_FATAL(...) vs__log_msg(LOG_FATAL, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+
+
 // Public APIs
 // - These are exported and meant to be used by users of vesuvius-c.h
 
@@ -1318,6 +1332,9 @@ static void vs__print_backtrace(void);
 static void vs__print_assert_details(const char* expr, const char* file, int line, const char* func);
 static void vs__assert_fail_with_backtrace(const char* expr, const char* file, int line, const char* func);
 
+//log
+static void vs__log_msg(vs__log_level_e level, const char* file, const char* func, int line, const char* fmt, ...);
+
 //chamfer
 static f32 vs__squared_distance(const f32* p1, const f32* p2);
 static f32 vs__min_distance_to_set(const f32* point, const f32* point_set, s32 set_size);
@@ -1384,6 +1401,32 @@ static int vs__vcps_write_binary_data(FILE* fp, const void* data, const char* sr
 //zarr
 static struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key);
 static void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]);
+
+static void vs__log_msg(vs__log_level_e level, const char* file, const char* func, int line, const char* fmt, ...) {
+
+    static const char* level_strings[] = {
+        "INFO",
+        "WARN",
+        "ERROR",
+        "FATAL"
+    };
+
+    time_t now;
+    time(&now);
+    char* date = ctime(&now);
+    date[strlen(date) - 1] = '\0'; // Remove newline
+
+    fprintf(stderr, "%s [%s] %s:%s:%d: ", date, level_strings[level], file, func, line);
+
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+
+    fprintf(stderr, "\n");
+    fflush(stderr);
+}
+
 
 static void vs__trim(char* str) {
   char* end;
@@ -1935,11 +1978,13 @@ void vs_chunk_set(chunk *chunk, s32 z, s32 y, s32 x, f32 data) {
 
 int vs_chunk_graft(chunk* dest, chunk* src, s32 src_start[static 3], s32 dest_start[static 3], s32 dims[static 3]) {
   if (!dest || !src || !src_start || !dest_start || !dims) {
+      LOG_ERROR("a param is NULL");
     return -1;
   }
 
   for (int i = 0; i < 3; i++) {
     if (dims[i] <= 0) {
+        LOG_ERROR("a dimension is <= 0");
       return -1;
     }
   }
@@ -1947,6 +1992,7 @@ int vs_chunk_graft(chunk* dest, chunk* src, s32 src_start[static 3], s32 dest_st
   for (int i = 0; i < 3; i++) {
     if (src_start[i] < 0 ||
         src_start[i] + dims[i] > src->dims[i]) {
+        LOG_ERROR("out of bounds src dimension");
       return -1;
         }
   }
@@ -1954,6 +2000,7 @@ int vs_chunk_graft(chunk* dest, chunk* src, s32 src_start[static 3], s32 dest_st
   for (int i = 0; i < 3; i++) {
     if (dest_start[i] < 0 ||
         dest_start[i] + dims[i] > dest->dims[i]) {
+        LOG_ERROR("out of bounds dest dimension");
       return -1;
         }
   }
@@ -2783,6 +2830,7 @@ s32 vs_march_cubes(const f32* values,
     if (!vertices || !indices) {
         free(vertices);
         free(indices);
+
         return 1;
     }
 
@@ -4507,79 +4555,117 @@ void vs_vol_free(volume* vol) {
     }
 }
 
-chunk *vs_vol_get_chunk(volume *vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]) {
+chunk *vs_vol_get_chunk(volume *vol, s32 vol_start[static 3], s32 chunk_dims[static 3]) {
+    //TODO: support arbitrary starts and sizes within the volume
+    //for now, we will assume that the volume starts and chunk dimensions are aligned with the zarr block sizes within
+    // volume because it makes the index calculations much easier
 
-  chunk* ret = vs_chunk_new(chunk_dims);
-
-  int zstart = chunk_pos[0] / vol->metadata.chunks[0];
-  int ystart = chunk_pos[1] / vol->metadata.chunks[0];
-  int xstart = chunk_pos[2] / vol->metadata.chunks[0];
-
-  int zend = (chunk_pos[0] + chunk_dims[0] - 1) / vol->metadata.chunks[0];
-  int yend = (chunk_pos[1] + chunk_dims[1] - 1) / vol->metadata.chunks[1];
-  int xend = (chunk_pos[2] + chunk_dims[2] - 1) / vol->metadata.chunks[2];
-
-  for (int z = zstart; z <= zend; z++) {
-    for (int y = ystart; y <= yend; y++) {
-      for (int x = xstart; x <= xend; x++) {
-          char blockpath[1024] = {'\0'};
-          chunk* c = NULL;
-          snprintf(blockpath, 1023, "%s/%d/%d/%d", vol->cache_dir, z, y, x);
-          printf("checking for zarr block at %s\n",blockpath);
-          if (vs__path_exists(blockpath)) {
-              printf("reading %s from disk\n",blockpath);
-              c = vs_zarr_read_chunk(blockpath,vol->metadata);
-              if (c == NULL) {
-                  printf("failed to read zarr chunk from %s\n",blockpath);
-                  return NULL;
-              }
-              //TODO: actually read from disk
-          } else {
-          char url[1024] = {'\0'};
-          snprintf(url,1023,"%s/%d/%d/%d",vol->url,z,y,x);
-          printf("downloading block from %s\n",url);
-          c = vs_zarr_fetch_block(url, vol->metadata);
-          if (c == NULL) {
-              //NOTE: this is not necessarily an error. Some logical blocks do not exist physically because
-              //they are all zero, and zarr will by default not keep all zero chunk files. so for now we'll assume
-              //that is the case and just skip it
-              printf("could not download block from %s\n",url);
-          } else {
-              printf("downloaded block from %s\n",url);
-
-              s32 src_start[3] = {
-                  MAX(0, chunk_pos[0] - z * vol->metadata.chunks[0]),
-                  MAX(0, chunk_pos[1] - y * vol->metadata.chunks[1]),
-                  MAX(0, chunk_pos[2] - x * vol->metadata.chunks[2])
-                };
-
-              s32 dest_start[3] = {
-                  z * vol->metadata.chunks[0] - chunk_pos[0],
-                  y * vol->metadata.chunks[1] - chunk_pos[1],
-                  x * vol->metadata.chunks[2] - chunk_pos[2]
-                };
-
-              s32 copy_dims[3] = {
-                  MIN(vol->metadata.chunks[0] - src_start[0], chunk_dims[0] - dest_start[0]),
-                  MIN(vol->metadata.chunks[1] - src_start[1], chunk_dims[1] - dest_start[1]),
-                  MIN(vol->metadata.chunks[2] - src_start[2], chunk_dims[2] - dest_start[2])
-                };
-              if (vs_chunk_graft(ret, c, src_start, dest_start, copy_dims)) {
-                  printf("failed to graft chunk\n");
-                  return NULL;
-              }
-              printf("writing chunk to %s\n",blockpath);
-              if (vs_zarr_write_chunk(blockpath,vol->metadata,c)) {
-                  printf("failed to write zarr chunk to %s\n",blockpath);
-                  return NULL;
-              }
-              //TODO: actually write the data to disk
-          }
-        }
-      }
+    if (vol_start[0] % vol->metadata.chunks[0] != 0) {
+        LOG_ERROR("vol_start indices must be a multiple of the zrr block size %d", vol->metadata.chunks[0]);
+        return NULL;
     }
-  }
-  return ret;
+
+    if (vol_start[1] % vol->metadata.chunks[1] != 0) {
+        LOG_ERROR("vol_start indices must be a multiple of the zrr block size %d", vol->metadata.chunks[1]);
+        return NULL;
+    }
+
+    if (vol_start[2] % vol->metadata.chunks[2] != 0) {
+        LOG_ERROR("vol_start indices must be a multiple of the zrr block size %d", vol->metadata.chunks[2]);
+        return NULL;
+    }
+
+    if (chunk_dims[0] % vol->metadata.chunks[0] != 0) {
+        LOG_ERROR("chunk_dims must be a multiple of the zrr block size %d", vol->metadata.chunks[0]);
+        return NULL;
+    }
+
+    if (chunk_dims[1] % vol->metadata.chunks[1] != 0) {
+        LOG_ERROR("chunk_dims must be a multiple of the zrr block size %d", vol->metadata.chunks[1]);
+        return NULL;
+    }
+
+    if (chunk_dims[2] % vol->metadata.chunks[2] != 0) {
+        LOG_ERROR("chunk_dims must be a multiple of the zrr block size %d", vol->metadata.chunks[2]);
+        return NULL;
+    }
+
+    chunk *ret = vs_chunk_new(chunk_dims);
+
+    int zstart = vol_start[0] / vol->metadata.chunks[0];
+    int ystart = vol_start[1] / vol->metadata.chunks[1];
+    int xstart = vol_start[2] / vol->metadata.chunks[2];
+    int zend = (vol_start[0] + chunk_dims[0]-1) / vol->metadata.chunks[0];
+    int yend = (vol_start[1] + chunk_dims[1]-1) / vol->metadata.chunks[1];
+    int xend = (vol_start[2] + chunk_dims[2]-1) / vol->metadata.chunks[2];
+
+
+    for (int z = zstart; z <= zend; z++) {
+        for (int y = ystart; y <= yend; y++) {
+            for (int x = xstart; x <= xend; x++) {
+                char blockpath[1024] = {'\0'};
+                chunk *c = NULL;
+                snprintf(blockpath, 1023, "%s/%d/%d/%d", vol->cache_dir, z, y, x);
+                LOG_INFO("checking for zarr block at %s", blockpath);
+                if (vs__path_exists(blockpath)) {
+                    LOG_INFO("reading %s from disk", blockpath);
+                    c = vs_zarr_read_chunk(blockpath, vol->metadata);
+                    if (c == NULL) {
+                        LOG_ERROR("failed to read zarr chunk from %s", blockpath);
+                        vs_chunk_free(ret);
+                        return NULL;
+                    }
+                } else {
+                    char url[1024] = {'\0'};
+                    snprintf(url, 1023, "%s/%d/%d/%d", vol->url, z, y, x);
+                    LOG_INFO("downloading block from %s", url);
+                    c = vs_zarr_fetch_block(url, vol->metadata);
+                    if (c == NULL) {
+                        //NOTE: this is not necessarily an error. Some logical blocks do not exist physically because
+                        //they are all zero, and zarr will by default not keep all zero chunk files. so for now we'll assume
+                        //that is the case and just skip it
+                        LOG_ERROR("could not download block from %s", url);
+                        continue;
+                    }
+                    LOG_INFO("downloaded block from %s", url);
+                    LOG_INFO("writing chunk to %s", blockpath);
+                    if (vs_zarr_write_chunk(blockpath, vol->metadata, c)) {
+                        LOG_ERROR("failed to write zarr chunk to %s", blockpath);
+                        vs_chunk_free(c);
+                        vs_chunk_free(ret);
+                        return NULL;
+                    }
+                }
+
+                s32 src_start[3] = {
+                    MAX(0, vol_start[0] - z * vol->metadata.chunks[0]),
+                    MAX(0, vol_start[1] - y * vol->metadata.chunks[1]),
+                    MAX(0, vol_start[2] - x * vol->metadata.chunks[2])
+                  };
+
+                s32 dest_start[3] = {
+                    z * vol->metadata.chunks[0] - vol_start[0],
+                    y * vol->metadata.chunks[1] - vol_start[1],
+                    x * vol->metadata.chunks[2] - vol_start[2]
+                  };
+
+                s32 copy_dims[3] = {
+                    MIN(vol->metadata.chunks[0] - src_start[0], chunk_dims[0] - dest_start[0]),
+                    MIN(vol->metadata.chunks[1] - src_start[1], chunk_dims[1] - dest_start[1]),
+                    MIN(vol->metadata.chunks[2] - src_start[2], chunk_dims[2] - dest_start[2])
+                  };
+
+                if (vs_chunk_graft(ret, c, src_start, dest_start, copy_dims)) {
+                    vs_chunk_free(c);
+                    vs_chunk_free(ret);
+                    LOG_ERROR("failed to graft chunk");
+                    return NULL;
+                }
+                vs_chunk_free(c);
+            }
+        }
+    }
+    return ret;
 }
 
 
@@ -4819,9 +4905,18 @@ int vs_zarr_write_chunk(char *path, zarr_metadata metadata, chunk* c) {
 }
 
 int vs_zarr_compress_chunk(chunk* c, zarr_metadata metadata, void** compressed_data) {
-  ASSERT(c->dims[0] == metadata.chunks[0], "zarr block size mismatch with chunk dims");
-  ASSERT(c->dims[1] == metadata.chunks[1], "zarr block size mismatch with chunk dims");
-  ASSERT(c->dims[2] == metadata.chunks[2], "zarr block size mismatch with chunk dims");
+    if (c->dims[0] != metadata.chunks[0]) {
+        printf("zarr block size mismatch with chunk dims");
+        return 1;
+    }
+    if (c->dims[1] != metadata.chunks[1]) {
+        printf("zarr block size mismatch with chunk dims");
+        return 1;
+    }
+    if (c->dims[2] != metadata.chunks[2]) {
+        printf("zarr block size mismatch with chunk dims");
+        return 1;
+    }
   int z = metadata.chunks[0];
   int y = metadata.chunks[1];
   int x = metadata.chunks[2];
@@ -4838,7 +4933,8 @@ int vs_zarr_compress_chunk(chunk* c, zarr_metadata metadata, void** compressed_d
       }
     }
   } else if (strcmp(metadata.dtype, "|u2") == 0) {
-    ASSERT(false, "16 bit zarrs not currently supported");
+      printf("16 bit zarr not currently supported\n");
+      return 1;
   } else {
     fprintf(stderr, "unsupported zarr format. Only unsigned 8 is supported\n");
   }
