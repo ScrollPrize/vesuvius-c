@@ -1719,7 +1719,7 @@ long vs_download(const char* url, void** out_buffer) {
     res = curl_easy_perform(curl);
 
     if (res != CURLE_OK) {
-        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        LOG_ERROR("curl_easy_perform() failed: %s", curl_easy_strerror(res));
         free(chunk.buffer);
         curl_easy_cleanup(curl);
         return -1;
@@ -2866,7 +2866,7 @@ static int vs__nrrd_parse_sizes(char* value, nrrd* nrrd) {
     while (token != NULL && i < nrrd->dimension) {
         nrrd->sizes[i] = atoi(token);
         if (nrrd->sizes[i] <= 0) {
-            printf("Invalid size value: %s", token);
+            LOG_ERROR("Invalid size value: %s", token);
             return 1;
         }
         token = strtok(NULL, " ");
@@ -2888,7 +2888,7 @@ static int vs__nrrd_parse_space_directions(char* value, nrrd* nrrd) {
                       &nrrd->space_directions[i][0],
                       &nrrd->space_directions[i][1],
                       &nrrd->space_directions[i][2]) != 3) {
-                printf("Invalid space direction: %s", token);
+                LOG_ERROR("Invalid space direction: %s", token);
                 return 1;
             }
         }
@@ -2906,7 +2906,7 @@ static int vs__nrrd_parse_space_origin(char* value, nrrd* nrrd) {
                &nrrd->space_origin[0],
                &nrrd->space_origin[1],
                &nrrd->space_origin[2]) != 3) {
-        printf("Invalid space origin: %s", value);
+        LOG_ERROR("Invalid space origin: %s", value);
         return 1;
     }
     return 0;
@@ -2924,7 +2924,7 @@ static size_t vs__nrrd_get_type_size(const char* type) {
 static int vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd) {
     size_t bytes_read = fread(nrrd->data, 1, nrrd->data_size, fp);
     if (bytes_read != nrrd->data_size) {
-        printf("Failed to read data: expected %zu bytes, got %zu",
+        LOG_ERROR("Failed to read data: expected %zu bytes, got %zu",
                 nrrd->data_size, bytes_read);
         return 1;
     }
@@ -2932,7 +2932,7 @@ static int vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd) {
 }
 
 static int vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd) {
-    printf("reading compressed data is not supported yet for nrrd\n");
+    LOG_ERROR("reading compressed data is not supported yet for nrrd\n");
     return 1;
     #if 0
     z_stream strm = {0};
@@ -2980,14 +2980,14 @@ static int vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd) {
 nrrd* vs_nrrd_read(const char* filename) {
     FILE* fp = fopen(filename, "rb");
     if (!fp) {
-        printf("could not open %s\n",filename);
+        LOG_ERROR("could not open %s\n",filename);
         return NULL;
     }
 
     nrrd* ret = calloc(1, sizeof(nrrd));
     if (!ret) {
 
-        printf("could not allocate ram for nrrd\n");
+        LOG_ERROR("could not allocate ram for nrrd\n");
         fclose(fp);
         return NULL;
     }
@@ -2995,14 +2995,14 @@ nrrd* vs_nrrd_read(const char* filename) {
 
     char line[MAX_LINE_LENGTH];
     if (!fgets(line, sizeof(line), fp)) {
-        printf("Failed to read magic");
+        LOG_ERROR("Failed to read magic");
         ret->is_valid = false;
         goto cleanup;
     }
     vs__trim(line);
 
     if (!vs__str_starts_with(line, "NRRD")) {
-        printf("Not a NRRD file: %s", line);
+        LOG_ERROR("Not a NRRD file: %s", line);
         ret->is_valid = false;
         goto cleanup;
     }
@@ -3037,7 +3037,7 @@ nrrd* vs_nrrd_read(const char* filename) {
         else if (strcmp(key, "dimension") == 0) {
             ret->dimension = atoi(value);
             if (ret->dimension <= 0 || ret->dimension > 16) {
-                printf("Invalid dimension: %d", ret->dimension);
+                LOG_ERROR("Invalid dimension: %d", ret->dimension);
                 ret->is_valid = false;
                 goto cleanup;
             }
@@ -3073,7 +3073,7 @@ nrrd* vs_nrrd_read(const char* filename) {
 
     size_t type_size = vs__nrrd_get_type_size(ret->type);
     if (type_size == 0) {
-        printf("Unsupported type: %s", ret->type);
+        LOG_ERROR("Unsupported type: %s", ret->type);
         ret->is_valid = false;
         goto cleanup;
     }
@@ -3085,7 +3085,7 @@ nrrd* vs_nrrd_read(const char* filename) {
 
     ret->data = malloc(ret->data_size);
     if (!ret->data) {
-        printf("Failed to allocate %zu bytes", ret->data_size);
+        LOG_ERROR("Failed to allocate %zu bytes", ret->data_size);
         ret->is_valid = false;
         goto cleanup;
     }
@@ -3103,7 +3103,7 @@ nrrd* vs_nrrd_read(const char* filename) {
         }
     }
     else {
-        printf("Unsupported encoding: %s", ret->encoding);
+        LOG_ERROR("Unsupported encoding: %s", ret->encoding);
         ret->is_valid = false;
         goto cleanup;
     }
@@ -4088,12 +4088,12 @@ void vs_tiff_print_tags(const TiffImage* img, int directory) {
 
 void vs_tiff_print_all_tags(const TiffImage* img) {
     if (!img) {
-        printf("Error: NULL TIFF image\n");
+        LOG_ERROR("Error: NULL TIFF image\n");
         return;
     }
 
     if (!img->isValid) {
-        printf("Error reading TIFF: %s\n", img->errorMsg);
+        LOG_ERROR("Error reading TIFF: %s\n", img->errorMsg);
         return;
     }
 
@@ -4413,13 +4413,13 @@ int vs_vcps_read(const char* filename,
               size_t* width, size_t* height, size_t* dim,
               void* data, const char* dst_type) {
     if (!dst_type || (strcmp(dst_type, "float") != 0 && strcmp(dst_type, "double") != 0)) {
-        fprintf(stderr, "Error: Invalid destination type\n");
+        LOG_ERROR("Error: Invalid destination type\n");
         return 1;
     }
 
     FILE* fp = fopen(filename, "rb");
     if (!fp) {
-        fprintf(stderr, "Error: Cannot open file %s\n", filename);
+        LOG_ERROR("Error: Cannot open file %s\n", filename);
         return 1;
     }
 
@@ -4462,7 +4462,7 @@ int vs_vcps_read(const char* filename,
     if (!header_complete || *width == 0 || *height == 0 || *dim == 0 ||
         (strcmp(src_type, "float") != 0 && strcmp(src_type, "double") != 0) ||
         !ordered) {
-        fprintf(stderr, "Error: Invalid header (w=%zu h=%zu d=%zu t=%s o=%d)\n",
+        LOG_ERROR("Error: Invalid header (w=%zu h=%zu d=%zu t=%s o=%d)\n",
                 *width, *height, *dim, src_type, ordered);
         fclose(fp);
         return 1;
@@ -4481,7 +4481,7 @@ int vs_vcps_write(const char* filename,
     if (!src_type || !dst_type ||
         (strcmp(src_type, "float") != 0 && strcmp(src_type, "double") != 0) ||
         (strcmp(dst_type, "float") != 0 && strcmp(dst_type, "double") != 0)) {
-        fprintf(stderr, "Error: Invalid type specification\n");
+        LOG_ERROR("Error: Invalid type specification\n");
         return 1;
     }
 
@@ -4520,7 +4520,7 @@ volume *vs_vol_new(char *cache_dir, char *url) {
 
   if (cache_dir != NULL) {
     if (vs__mkdir_p(cache_dir)) {
-      printf("Could not mkdir %s\n",cache_dir);
+      LOG_ERROR("Could not mkdir %s",cache_dir);
       return NULL;
     }
   }
@@ -4529,15 +4529,15 @@ volume *vs_vol_new(char *cache_dir, char *url) {
   if (url != NULL) {
     char zarray_url[1024] = {'\0'};
     snprintf(zarray_url,1023,"%s/.zarray",url);
-    printf("trying to read .zarray from %s",zarray_url);
+    LOG_INFO("trying to read .zarray from %s",zarray_url);
     if (vs_download(zarray_url, &zarray_buf) <= 0) {
-      printf("could not download .zarray file!\n");
+      LOG_ERROR("could not download .zarray file!");
       return NULL;
     }
   }
   zarr_metadata metadata;
   if (vs_zarr_parse_metadata(zarray_buf,&metadata)) {
-    printf("failed to parse .zarray\n");
+    LOG_ERROR("failed to parse .zarray");
     return NULL;
   }
 
@@ -4711,7 +4711,7 @@ int vs_zarr_parse_metadata(const char *json_string, zarr_metadata *metadata) {
   //upon failing to parse a mandatory field
   struct json_value_s *root = json_parse(json_string, strlen(json_string));
   if (!root) {
-    printf("Failed to parse JSON!\n");
+    LOG_ERROR("Failed to parse JSON!\n");
     return 1;
   }
 
@@ -4795,7 +4795,7 @@ zarr_metadata vs_zarr_parse_zarray(char *path) {
 
   FILE *fp = fopen(path, "rt");
   if (fp == NULL) {
-    printf("could not open file %s\n", path);
+    LOG_ERROR("could not open file %s\n", path);
     assert(false);
     return metadata;
   }
@@ -4854,13 +4854,13 @@ chunk* vs_zarr_decompress_chunk(long size, void* compressed_data, zarr_metadata 
         ASSERT(false,"16 bit zarr not currently supported");
         dtype_size = 2;
     } else {
-        fprintf(stderr,"unsupported zarr format. Only unsigned 8 and unsigned 16 are supported\n");
+        LOG_ERROR("unsupported zarr format. Only unsigned 8 and unsigned 16 are supported\n");
     }
 
     unsigned char *decompressed_data = malloc(z * y * x * dtype_size);
     int decompressed_size = blosc2_decompress(compressed_data, size, decompressed_data, z * y * x * dtype_size);
     if (decompressed_size < 0) {
-        fprintf(stderr, "Blosc2 decompression failed: %d\n", decompressed_size);
+        LOG_ERROR("Blosc2 decompression failed: %d\n", decompressed_size);
         free(compressed_data);
         free(decompressed_data);
         return NULL;
@@ -4887,7 +4887,8 @@ int vs_zarr_write_chunk(char *path, zarr_metadata metadata, chunk* c) {
 
     char* dirname = vs__basename(path);
     if (vs__mkdir_p(dirname)) {
-        printf("failed to mkdirs to %s\n",dirname);
+        LOG_ERROR("failed to mkdirs to %s",dirname);
+        return 1;
     }
     void* compressed_buf;
     int len = vs_zarr_compress_chunk(c,metadata,&compressed_buf);
@@ -4897,7 +4898,7 @@ int vs_zarr_write_chunk(char *path, zarr_metadata metadata, chunk* c) {
     }
     FILE* fp = fopen(path, "wb");
     fwrite(compressed_buf,1,len,fp);
-    printf("wrote chunk to %s\n",path);
+    LOG_INFO("wrote chunk to %s",path);
     fclose(fp);
     free(dirname);
     free(compressed_buf);
@@ -4906,15 +4907,15 @@ int vs_zarr_write_chunk(char *path, zarr_metadata metadata, chunk* c) {
 
 int vs_zarr_compress_chunk(chunk* c, zarr_metadata metadata, void** compressed_data) {
     if (c->dims[0] != metadata.chunks[0]) {
-        printf("zarr block size mismatch with chunk dims");
+        LOG_ERROR("zarr block size mismatch with chunk dims");
         return 1;
     }
     if (c->dims[1] != metadata.chunks[1]) {
-        printf("zarr block size mismatch with chunk dims");
+        LOG_ERROR("zarr block size mismatch with chunk dims");
         return 1;
     }
     if (c->dims[2] != metadata.chunks[2]) {
-        printf("zarr block size mismatch with chunk dims");
+        LOG_ERROR("zarr block size mismatch with chunk dims");
         return 1;
     }
   int z = metadata.chunks[0];
@@ -4933,16 +4934,16 @@ int vs_zarr_compress_chunk(chunk* c, zarr_metadata metadata, void** compressed_d
       }
     }
   } else if (strcmp(metadata.dtype, "|u2") == 0) {
-      printf("16 bit zarr not currently supported\n");
+      LOG_ERROR("16 bit zarr not currently supported\n");
       return 1;
   } else {
-    fprintf(stderr, "unsupported zarr format. Only unsigned 8 is supported\n");
+    LOG_ERROR("unsupported zarr format. Only unsigned 8 is supported\n");
   }
   *compressed_data = malloc(z*y*x+BLOSC2_MAX_OVERHEAD);
   int compressed_len = blosc2_compress(metadata.compressor.clevel,metadata.compressor.shuffle,dtype_size,decompressed_data,z*y*x,*compressed_data,z*y*x*BLOSC2_MAX_OVERHEAD);
 
   if (compressed_len <= 0) {
-    fprintf(stderr, "Blosc2 compression failed: %d\n", compressed_len);
+    LOG_ERROR("Blosc2 compression failed: %d\n", compressed_len);
     free(compressed_data);
     free(decompressed_data);
     return -1;
@@ -4955,12 +4956,11 @@ int vs_zarr_compress_chunk(chunk* c, zarr_metadata metadata, void** compressed_d
 chunk *vs_tiff_to_chunk(const char *tiffpath) {
   TiffImage *img = vs_tiff_read(tiffpath);
   if (!img || !img->isValid) {
-    assert(false);
+      LOG_ERROR("tiff is NULL or invalid");
     return NULL;
   }
   if (img->depth <= 1) {
     printf("can't load a 2d tiff as a chunk");
-    assert(false);
     return NULL;
   }
 
@@ -4988,12 +4988,12 @@ chunk *vs_tiff_to_chunk(const char *tiffpath) {
 slice *vs_tiff_to_slice(const char *tiffpath, int index) {
   TiffImage *img = vs_tiff_read(tiffpath);
   if (!img || !img->isValid) {
-    assert(false);
-    return NULL;
+      LOG_ERROR("tiff is null or invalid");
+      return NULL;
   }
   if (index < 0 || index >= img->depth) {
-    assert(false);
-    return NULL;
+      LOG_ERROR("index %d is invalid for a tiff with depth %d",index,img->depth);
+      return NULL;
   }
 
   s32 dims[2] = {img->directories[0].height, img->directories[0].width};
