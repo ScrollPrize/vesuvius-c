@@ -4694,15 +4694,14 @@ static void vs__json_parse_int32_array(struct json_array_s *array, int32_t outpu
 
 chunk* vs_zarr_fetch_block(char* url, zarr_metadata metadata) {
 
-  void* compressed_buf;
+  void* compressed_buf = NULL;
   long compressed_size;
   if ((compressed_size = vs_download(url, &compressed_buf)) <= 0) {
+      free(compressed_buf);
     return NULL;
   }
   chunk* mychunk = vs_zarr_decompress_chunk(compressed_size, compressed_buf,metadata);
-  if (mychunk == NULL) {
-    return NULL;
-  }
+  free(compressed_buf);
   return mychunk;
 }
 
@@ -4857,13 +4856,20 @@ chunk* vs_zarr_decompress_chunk(long size, void* compressed_data, zarr_metadata 
         LOG_ERROR("unsupported zarr format. Only unsigned 8 and unsigned 16 are supported\n");
     }
 
-    unsigned char *decompressed_data = malloc(z * y * x * dtype_size);
-    int decompressed_size = blosc2_decompress(compressed_data, size, decompressed_data, z * y * x * dtype_size);
-    if (decompressed_size < 0) {
-        LOG_ERROR("Blosc2 decompression failed: %d\n", decompressed_size);
-        free(compressed_data);
-        free(decompressed_data);
-        return NULL;
+    unsigned char* decompressed_data;
+    int decompressed_size;
+    // the data may not actually be compressed. if so, just use the compressed data
+    if(strnlen(metadata.compressor.cname,32) == 0) {
+        decompressed_data = compressed_data;
+        decompressed_size = size;
+    } else {
+        decompressed_data = malloc(z * y * x * dtype_size);
+        decompressed_size = blosc2_decompress(compressed_data, size, decompressed_data, z * y * x * dtype_size);
+        if (decompressed_size < 0) {
+            LOG_ERROR("Blosc2 decompression failed: %d\n", decompressed_size);
+            free(decompressed_data);
+            return NULL;
+        }
     }
     chunk *ret = vs_chunk_new((s32[3]){z, y, x});
 
@@ -4874,7 +4880,9 @@ chunk* vs_zarr_decompress_chunk(long size, void* compressed_data, zarr_metadata 
             }
         }
     }
-    free(decompressed_data);
+    if(decompressed_data != compressed_data) {
+        free(decompressed_data);
+    }
 
     return ret;
 }
