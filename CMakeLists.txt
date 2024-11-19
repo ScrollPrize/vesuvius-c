@@ -28,6 +28,7 @@ target_link_libraries(vesuvius_tests_sanitizer PUBLIC -lm)
 
 find_package(Blosc2 REQUIRED)
 find_package(CURL REQUIRED)
+find_package(JsonC REQUIRED)
 
 if(Blosc2_FOUND)
     target_link_libraries(vesuvius_example PUBLIC Blosc2::Blosc2)
@@ -45,6 +46,15 @@ if(CURL_FOUND)
     target_link_libraries(vesuvius_tests_sanitizer PUBLIC CURL::libcurl)
 else()
     message(FATAL_ERROR "CURL not found, please install curl")
+endif()
+
+if(JsonC_FOUND)
+    target_link_libraries(vesuvius_example PUBLIC JsonC::JsonC)
+    target_link_libraries(vesuvius_example2 PUBLIC JsonC::JsonC)
+    target_link_libraries(vesuvius_tests PUBLIC JsonC::JsonC)
+    target_link_libraries(vesuvius_tests_sanitizer PUBLIC JsonC::JsonC)
+else()
+    message(FATAL_ERROR "json-c not found, please install json-c: https://github.com/json-c/json-c")
 endif()
 
 target_compile_options(vesuvius_tests_sanitizer PUBLIC -fsanitize=address -fno-omit-frame-pointer)
