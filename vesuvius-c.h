@@ -2004,7 +2004,7 @@ int vs_chunk_graft(chunk* dest, chunk* src, s32 src_start[static 3], s32 dest_st
   for (int z = 0; z < dims[0]; z++) {
     for (int y = 0; y < dims[1]; y++) {
       for (int x = 0; x < dims[2]; x++) {
-        f32 value = vs_chunk_get(src, src_start[0] + z, src_start[1] + y, src_start[02] + x);
+        f32 value = vs_chunk_get(src, src_start[0] + z, src_start[1] + y, src_start[2] + x);
         vs_chunk_set(dest, dest_start[0] + z, dest_start[1] + y, dest_start[2] + x, value);
       }
     }
