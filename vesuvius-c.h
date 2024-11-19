@@ -1,5 +1,3 @@
-#define VESUVIUS_IMPL
-
 #ifndef VESUVIUS_H
 #define VESUVIUS_H
 
@@ -30,7 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <curl/curl.h>
-//#include <json-c/json.h>
+#include <json-c/json.h>
 #include <blosc2.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -174,7 +172,6 @@ static int fetch_metadata(const char *url, char *buffer) {
 
 // Parses the metadata JSON to retrieve chunk sizes and shape
 static int parse_metadata(const char *buffer) {
-#if 0
     struct json_object *parsed_json, *chunks, *shape;
 
     parsed_json = json_tokener_parse(buffer);
@@ -203,7 +200,6 @@ static int parse_metadata(const char *buffer) {
 
     json_object_put(parsed_json);  // Free JSON object
     return 0;
-#endif
 }
 
 // Public function to initialize chunk sizes and shape
