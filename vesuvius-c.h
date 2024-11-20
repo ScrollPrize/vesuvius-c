@@ -35,16 +35,9 @@
 #include <errno.h>
 #include <float.h>
 
-// Variables to hold Zarr's chunk sizes and shape, initially set to -1 to indicate uninitialized
-int CHUNK_SIZE_X = -1, CHUNK_SIZE_Y = -1, CHUNK_SIZE_Z = -1;
-int SHAPE_X = -1, SHAPE_Y = -1, SHAPE_Z = -1;
-
 // Buffer size for metadata JSON and URL
 #define BUFFER_SIZE 4096
 #define URL_SIZE 256
-
-// Global variable to store the dynamically constructed Zarr URL
-char ZARR_URL[URL_SIZE] = {0};  // Initially empty
 
 #define CACHE_CAPACITY 100  // Define the LRU cache capacity
 #define CACHE_DIR ".vesuvius-cache"
@@ -133,8 +126,17 @@ int write_trianglemesh_to_obj(const char *filename, const TriangleMesh *mesh);
 RegionOfInterest get_mesh_bounding_box(const TriangleMesh *mesh);
 void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi);
 
+#ifdef VESUVIUS_IMPL
+
 // Global cache
 LRUCache *cache;
+
+// Global variable to store the dynamically constructed Zarr URL
+char ZARR_URL[URL_SIZE] = {0};  // Initially empty
+
+// Variables to hold Zarr's chunk sizes and shape, initially set to -1 to indicate uninitialized
+int CHUNK_SIZE_X = -1, CHUNK_SIZE_Y = -1, CHUNK_SIZE_Z = -1;
+int SHAPE_X = -1, SHAPE_Y = -1, SHAPE_Z = -1;
 
 // Internal function to write data fetched by cURL
 static size_t write_callback(void *ptr, size_t size, size_t nmemb, void *stream) {
