@@ -1,6 +1,26 @@
 #ifndef VESUVIUS_H
 #define VESUVIUS_H
 
+// Vesuvius-c notes:
+// - in order to use Vesuvius-c, define VESUVIUS_IMPL in one .c file and then #include "vesuvius-c.h"
+// - when passing pointers to a _new function in order to fill out fields in the struct (e.g. vs_mesh_new)
+//   the struct will take ownership of the pointer and the pointer shall be cleaned up in the _free function.
+//   The caller loses ownership of the pointer. This does NOT include char* for strings like paths or URLs
+//     - e.g. vs_vol_new(char* cache, char* url) does _not_ subsume either pointer. If they are not literals
+//       then the caller is responsible for cleaning up the char*
+// - index order is in Z Y X order
+// - a 0 return code indicates success for functions that do NOT return a pointer
+// - a non zero return code _can_ indicate failure
+//    - this is often on a case by case basis, but is quite often the case for functions that take out parameters
+//      or are otherwise side-effect-ful
+// - a NULL pointer indicates failure for functions that return a pointer
+// - It is the caller's responsibility to clean up pointers returned by Vesuvius APIs
+//   - some structures, such as chunk and volume, have custom _free functions which should be called
+//     which will free any pointers contained within the structure that have been allocated, f.ex. in _new
+//     AND will also free the pointer itself
+//   - this applies to both function return values and out parameters passed as pointer pointers
+//   - for pointers to primitive types the caller should just call free() on the pointer
+
 #include <ctype.h>
 #include <limits.h>
 #include <stddef.h>
@@ -216,8 +236,8 @@ size_t write_data(void *ptr, size_t size, size_t nmemb, MemoryChunk *chunk) {
 // Initialize the vesuvius library with dynamic URL construction
 void init_vesuvius(const char *scroll_id, int energy, double resolution) {
     // Construct the ZARR_URL based on the provided parameters, stopping at the directory
-    snprintf(ZARR_URL, URL_SIZE, 
-             "https://dl.ash2txt.org/other/dev/scrolls/%s/volumes/%dkeV_%.2fum.zarr/0/", 
+    snprintf(ZARR_URL, URL_SIZE,
+             "https://dl.ash2txt.org/other/dev/scrolls/%s/volumes/%dkeV_%.2fum.zarr/0/",
              scroll_id, energy, resolution);
 
     // Load shape and chunk size from the dynamically constructed ZARR_URL
@@ -930,21 +950,6 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
     }
 }
 
-#endif
-
-//vesuvius notes:
-// - when passing pointers to a _new function in order to fill out fields in the struct (e.g. vs_mesh_new)
-//   the struct will take ownership of the pointer and the pointer shall be cleaned up in the _free function.
-//   The caller loses ownership of the pointer
-// - index order is in Z Y X order
-// - a 0 return code indicates success for functions that do NOT return a pointer
-// - a non zero return code indicates failure
-// - a NULL pointer indicates failure for functions that return a pointer
-
-// in order to use Vesuvius-c, define VESUVIUS_IMPL in one .c file and then #include "vesuvius-c.h" 
-// in order to use curl, which depends on libcurl and ssl, define VESUVIUS_CURL_IMPL 
-// in order to use zarr, which depends on cblosc2 and json.h, define VESUVIUS_ZARR_IMPL
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -957,16 +962,30 @@ void reset_mesh_origin_to_roi(TriangleMesh *mesh, const RegionOfInterest *roi) {
 #include <string.h>
 #include <errno.h>
 #include <time.h>
-#include <unistd.h>
 
-#ifdef VESUVIUS_CURL_IMPL
 #include <curl/curl.h>
+#include <blosc2.h>
+
+#if defined(__linux__) || defined(__GLIBC__)
+#include <execinfo.h>
 #endif
 
-#ifdef VESUVIUS_ZARR_IMPL
-#include <blosc2.h>
-#include <json.h>
+#ifdef NDEBUG
+#define ASSERT(expr, msg, ...) ((void)0)
+#else
+#define ASSERT(expr, msg, ...) do{if(!(expr)){fprintf(stderr,msg __VA_OPT__(,)#__VA_ARGS__); vs__assert_fail_with_backtrace(#expr, __FILE__, __LINE__, __func__);}}while(0)
 #endif
+
+#ifdef MAX
+#undef MAX
+#endif
+#define MAX(a,b) (a > b ? a : b)
+
+
+#ifdef MIN
+#undef MIN
+#endif
+#define MIN(a,b) (a < b ? a : b)
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -996,12 +1015,10 @@ typedef struct hist_stats {
     f32 std_dev;
 } hist_stats;
 
-#ifdef VESUVIUS_CURL_IMPL
 typedef struct {
     char* buffer;
     size_t size;
 } DownloadBuffer;
-#endif
 
 typedef struct chunk {
     int dims[3];
@@ -1116,23 +1133,7 @@ typedef struct {
     char errorMsg[256];
 } TiffImage;
 
-// vol
-// A volume is an entire scroll
-//   - for Scroll 1 it is all 14376 x 7888 x 8096 voxels
-//   - the dtype is uint8 or uint16
-//
-
-typedef struct volume {
-    s32 dims[3];
-    bool is_zarr;
-    bool is_tif_stack;
-    bool uses_3d_tif;
-    char* cache_dir;
-    u64 vol_id;
-} volume;
-
 //zarr
-#ifdef VESUVIUS_ZARR_IMPL
 typedef struct zarr_compressor_settings {
     int32_t blocksize;
     int32_t clevel;
@@ -1150,7 +1151,39 @@ typedef struct zarr_metadata {
     char order; // Single character 'C' or 'F'
     int32_t zarr_format;
 } zarr_metadata;
-#endif
+
+// vol
+// A volume is an entire scroll at a given pixel density
+//     - for Scroll 1 it is all 14376 x 7888 x 8096 voxels
+//         - for the 2x scaled down Scroll 1 you would need a separate volume
+//     - the dtype is uint8
+//     - wraps a zarr array
+//     - a volume takes a url and a local directory
+//         - the url and path should both contain the .zarray
+//             - "/path/to/my/zarr" would contain "/path/to/my/zarr/.zarray"
+//             - "https://example.com/path/to/my/zarr" would contain "https://example.com/path/to/my/zarr/.zarray"
+//         - blocks are read from the cache if they exist, otherwise downloaded and written to disk
+
+
+typedef struct volume {
+    char cache_dir [1024];
+    char url [1024];
+    zarr_metadata metadata;
+} volume;
+
+
+typedef enum {
+    LOG_INFO,
+    LOG_WARN,
+    LOG_ERROR,
+    LOG_FATAL
+} vs__log_level_e;
+
+#define LOG_INFO(...) vs__log_msg(LOG_INFO, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+#define LOG_WARN(...) vs__log_msg(LOG_WARN, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+#define LOG_ERROR(...) vs__log_msg(LOG_ERROR, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+#define LOG_FATAL(...) vs__log_msg(LOG_FATAL, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+
 
 // Public APIs
 // - These are exported and meant to be used by users of vesuvius-c.h
@@ -1262,13 +1295,18 @@ int vs_vcps_write(const char* filename,
                const void* data, const char* src_type, const char* dst_type);
 
 // volume
-volume *vs_vol_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool uses_3d_tif, char* cache_dir, u64 vol_id);
+volume* vs_vol_new(char* cache_dir, char* url);
+void vs_vol_free(volume* vol);
 chunk* vs_vol_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]);
 
 // zarr
-#ifdef VESUVIUS_ZARR_IMPL
 zarr_metadata vs_zarr_parse_zarray(char *path);
-#endif
+chunk* vs_zarr_read_chunk(char* path, zarr_metadata metadata);
+int vs_zarr_compress_chunk(chunk* c, zarr_metadata metadata, void** compressed_data);
+chunk* vs_zarr_decompress_chunk(long size, void* compressed_data, zarr_metadata metadata);
+int vs_zarr_parse_metadata(const char *json_string, zarr_metadata *metadata);
+chunk* vs_zarr_fetch_block(char* url, zarr_metadata metadata);
+int vs_zarr_write_chunk(char *path, zarr_metadata metadata, chunk* c);
 
 // vesuvius specific
 chunk *vs_tiff_to_chunk(const char *tiffpath);
@@ -1287,6 +1325,12 @@ static void vs__skip_line(FILE *fp);
 static bool vs__str_starts_with(const char* str, const char* prefix);
 static int vs__mkdir_p(const char* path);
 static bool vs__path_exists(const char *path);
+static void vs__print_backtrace(void);
+static void vs__print_assert_details(const char* expr, const char* file, int line, const char* func);
+static void vs__assert_fail_with_backtrace(const char* expr, const char* file, int line, const char* func);
+
+//log
+static void vs__log_msg(vs__log_level_e level, const char* file, const char* func, int line, const char* fmt, ...);
 
 //chamfer
 static f32 vs__squared_distance(const f32* p1, const f32* p2);
@@ -1352,11 +1396,31 @@ static int vs__vcps_read_binary_data(FILE* fp, void* out_data, const char* src_t
 static int vs__vcps_write_binary_data(FILE* fp, const void* data, const char* src_type, const char* dst_type, size_t count);
 
 //zarr
-#ifdef VESUVIUS_ZARR_IMPL
-static struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key);
-static void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]);
-static int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metadata);
-#endif
+static void vs__json_parse_int32_array(json_object *array_obj, int32_t output[3]);
+static void vs__log_msg(vs__log_level_e level, const char* file, const char* func, int line, const char* fmt, ...) {
+
+    static const char* level_strings[] = {
+        "INFO",
+        "WARN",
+        "ERROR",
+        "FATAL"
+    };
+
+    time_t now;
+    time(&now);
+    char* date = ctime(&now);
+    date[strlen(date) - 1] = '\0'; // Remove newline
+
+    fprintf(stderr, "%s [%s] %s:%s:%d: ", date, level_strings[level], file, func, line);
+
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+
+    fprintf(stderr, "\n");
+    fflush(stderr);
+}
 
 
 static void vs__trim(char* str) {
@@ -1373,37 +1437,191 @@ static bool vs__str_starts_with(const char* str, const char* prefix) {
 }
 
 static int vs__mkdir_p(const char* path) {
-  char tmp[1024];
-  char* p = NULL;
-  size_t len;
+    char tmp[1024];
+    char* p = NULL;
+    size_t len;
+    int status = 0;
 
-  snprintf(tmp, sizeof(tmp), "%s", path);
-  len = strlen(tmp);
-  if (tmp[len - 1] == '/') {
-    tmp[len - 1] = 0;
-  }
-
-  for (p = tmp + 1; *p; p++) {
-    if (*p == '/') {
-      *p = 0;
-#ifdef _WIN32
-      mkdir(tmp);
-#else
-      mkdir(tmp, 0755);
-#endif
-      *p = '/';
+    // Check for NULL path
+    if (path == NULL) {
+        return 1;
     }
-  }
+
+    // Copy path to temporary buffer
+    if (snprintf(tmp, sizeof(tmp), "%s", path) >= sizeof(tmp)) {
+        return 1;  // Path too long
+    }
+
+    len = strlen(tmp);
+    if (len == 0) {
+        return 1;  // Empty path
+    }
+
+    // Remove trailing slash if present
+    if (tmp[len - 1] == '/') {
+        tmp[len - 1] = 0;
+    }
+
+    // Handle absolute path
+    p = (tmp[0] == '/') ? tmp + 1 : tmp;
+
+    // Create parent directories
+    for (; *p; p++) {
+        if (*p == '/') {
+            *p = 0;  // Temporarily terminate string at this position
 
 #ifdef _WIN32
-  return (mkdir(tmp) == 0 || errno == EEXIST) ? 0 : 1;
+            status = mkdir(tmp);
 #else
-  return (mkdir(tmp, 0755) == 0 || errno == EEXIST) ? 0 : 1;
+            status = mkdir(tmp, 0755);
 #endif
+            // Ignore "Already exists" error, fail on other errors
+            if (status != 0 && errno != EEXIST) {
+                return 1;
+            }
+
+            *p = '/';  // Restore the slash
+        }
+    }
+
+    // Create the final directory
+#ifdef _WIN32
+    status = mkdir(tmp);
+#else
+    status = mkdir(tmp, 0755);
+#endif
+
+    // Return 0 if directory was created or already exists
+    return (status == 0 || errno == EEXIST) ? 0 : 1;
 }
 
 static bool vs__path_exists(const char *path) {
     return access(path, F_OK) == 0 ? true : false;
+}
+
+static char* vs__basename(const char* path) {
+    if (path == NULL) {
+        return NULL;
+    }
+
+    // Handle empty string
+    if (path[0] == '\0') {
+        char* result = malloc(2);
+        if (result) {
+            strcpy(result, ".");
+        }
+        return result;
+    }
+
+    // Create a copy of the path that we can modify
+    char* path_copy = strdup(path);
+    if (path_copy == NULL) {
+        return NULL;
+    }
+
+    // Remove trailing slashes
+    size_t len = strlen(path_copy);
+    while (len > 1 && path_copy[len - 1] == '/') {
+        path_copy[--len] = '\0';
+    }
+
+    // Find the last separator
+    char* last_slash = strrchr(path_copy, '/');
+
+    // Handle different cases
+    char* result;
+    if (last_slash == NULL) {
+        // No slash found - return "."
+        result = malloc(2);
+        if (result) {
+            strcpy(result, ".");
+        }
+    } else if (last_slash == path_copy) {
+        // Slash is at the beginning - return "/"
+        result = malloc(2);
+        if (result) {
+            strcpy(result, "/");
+        }
+    } else {
+        // Normal case - return everything up to the last slash
+        *last_slash = '\0';
+        result = strdup(path_copy);
+    }
+
+    free(path_copy);
+    return result;
+}
+
+static char* vs__filename(const char* path) {
+    if (path == NULL) {
+        return NULL;
+    }
+
+    // Find the last separator
+    const char* last_slash = strrchr(path, '/');
+
+    if (last_slash == NULL) {
+        // No slash found - return copy of entire string
+        return strdup(path);
+    }
+
+    // Move past the slash to get the last component
+    last_slash++;
+
+    // Return empty string if the path ends in a slash
+    if (*last_slash == '\0') {
+        char* result = malloc(1);
+        if (result) {
+            result[0] = '\0';
+        }
+        return result;
+    }
+
+    // Return copy of everything after the last slash
+    return strdup(last_slash);
+}
+
+
+static void vs__print_backtrace(void) {
+#if defined(__linux__) || defined(__GLIBC__)
+
+    void *stack_frames[64];
+    int frame_count;
+    char **frame_strings;
+
+    // Get the stack frames
+    frame_count = backtrace(stack_frames, 64);
+
+    // Convert addresses to strings
+    frame_strings = backtrace_symbols(stack_frames, frame_count);
+    if (frame_strings == NULL) {
+        perror("backtrace_symbols");
+        exit(EXIT_FAILURE);
+    }
+
+    // Print the backtrace
+    fprintf(stderr, "\nBacktrace:\n");
+    for (int i = 0; i < frame_count; i++) {
+        fprintf(stderr, "  [%d] %s\n", i, frame_strings[i]);
+    }
+
+    free(frame_strings);
+#else
+    printf("cannot print a backtrace on non linux systems\n");
+#endif
+}
+
+static void vs__print_assert_details(const char* expr, const char* file, int line, const char* func) {
+    fprintf(stderr, "\nAssertion failed!\n");
+    fprintf(stderr, "Expression: %s\n", expr);
+    fprintf(stderr, "Location  : %s:%d\n", file, line);
+    fprintf(stderr, "Function  : %s\n", func);
+}
+
+static void vs__assert_fail_with_backtrace(const char* expr, const char* file, int line, const char* func) {
+    vs__print_assert_details(expr, file, line, func);
+    vs__print_backtrace();
+    abort();
 }
 
 // chamfer
@@ -1444,7 +1662,6 @@ f32 vs_chamfer_distance(const f32* set1, s32 size1, const f32* set2, s32 size2) 
 }
 
 //curl
-#ifdef VESUVIUS_CURL_IMPL
 static size_t vs__write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     DownloadBuffer *mem = userp;
@@ -1497,7 +1714,7 @@ long vs_download(const char* url, void** out_buffer) {
     res = curl_easy_perform(curl);
 
     if (res != CURLE_OK) {
-        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        LOG_ERROR("curl_easy_perform() failed: %s", curl_easy_strerror(res));
         free(chunk.buffer);
         curl_easy_cleanup(curl);
         return -1;
@@ -1514,12 +1731,7 @@ long vs_download(const char* url, void** out_buffer) {
     *out_buffer = chunk.buffer;
     return chunk.size;
 }
-#else
-long vs_download(const char* url, void** out_buffer) {
-    printf("curl support must be enabled to download files\n");
-    return -1;
-}
-#endif
+
 
 // histogram
 histogram *vs_histogram_new(s32 num_bins, f32 min_value, f32 max_value) {
@@ -1713,7 +1925,6 @@ chunk *vs_chunk_new(int dims[static 3]) {
   chunk *ret = malloc(sizeof(chunk) + dims[0] * dims[1] * dims[2] * sizeof(float));
 
   if (ret == NULL) {
-    assert(false);
     return NULL;
   }
 
@@ -1731,7 +1942,6 @@ slice *vs_slice_new(int dims[static 2]) {
   slice *ret = malloc(sizeof(slice) + dims[0] * dims[1] * sizeof(float));
 
   if (ret == NULL) {
-    assert(false);
     return NULL;
   }
 
@@ -1759,6 +1969,46 @@ f32 vs_chunk_get(chunk *chunk, s32 z, s32 y, s32 x) {
 
 void vs_chunk_set(chunk *chunk, s32 z, s32 y, s32 x, f32 data) {
   chunk->data[z * chunk->dims[1] * chunk->dims[2] + y * chunk->dims[2] + x] = data;
+}
+
+int vs_chunk_graft(chunk* dest, chunk* src, s32 src_start[static 3], s32 dest_start[static 3], s32 dims[static 3]) {
+  if (!dest || !src || !src_start || !dest_start || !dims) {
+      LOG_ERROR("a param is NULL");
+    return -1;
+  }
+
+  for (int i = 0; i < 3; i++) {
+    if (dims[i] <= 0) {
+        LOG_ERROR("a dimension is <= 0");
+      return -1;
+    }
+  }
+
+  for (int i = 0; i < 3; i++) {
+    if (src_start[i] < 0 ||
+        src_start[i] + dims[i] > src->dims[i]) {
+        LOG_ERROR("out of bounds src dimension");
+      return -1;
+        }
+  }
+
+  for (int i = 0; i < 3; i++) {
+    if (dest_start[i] < 0 ||
+        dest_start[i] + dims[i] > dest->dims[i]) {
+        LOG_ERROR("out of bounds dest dimension");
+      return -1;
+        }
+  }
+
+  for (int z = 0; z < dims[0]; z++) {
+    for (int y = 0; y < dims[1]; y++) {
+      for (int x = 0; x < dims[2]; x++) {
+        f32 value = vs_chunk_get(src, src_start[0] + z, src_start[1] + y, src_start[2] + x);
+        vs_chunk_set(dest, dest_start[0] + z, dest_start[1] + y, dest_start[2] + x, value);
+      }
+    }
+  }
+  return 0;
 }
 
 
@@ -2575,7 +2825,8 @@ s32 vs_march_cubes(const f32* values,
     if (!vertices || !indices) {
         free(vertices);
         free(indices);
-        return 0;
+
+        return 1;
     }
 
     s32 vertex_count = 0;
@@ -2610,7 +2861,7 @@ static int vs__nrrd_parse_sizes(char* value, nrrd* nrrd) {
     while (token != NULL && i < nrrd->dimension) {
         nrrd->sizes[i] = atoi(token);
         if (nrrd->sizes[i] <= 0) {
-            printf("Invalid size value: %s", token);
+            LOG_ERROR("Invalid size value: %s", token);
             return 1;
         }
         token = strtok(NULL, " ");
@@ -2632,7 +2883,7 @@ static int vs__nrrd_parse_space_directions(char* value, nrrd* nrrd) {
                       &nrrd->space_directions[i][0],
                       &nrrd->space_directions[i][1],
                       &nrrd->space_directions[i][2]) != 3) {
-                printf("Invalid space direction: %s", token);
+                LOG_ERROR("Invalid space direction: %s", token);
                 return 1;
             }
         }
@@ -2650,7 +2901,7 @@ static int vs__nrrd_parse_space_origin(char* value, nrrd* nrrd) {
                &nrrd->space_origin[0],
                &nrrd->space_origin[1],
                &nrrd->space_origin[2]) != 3) {
-        printf("Invalid space origin: %s", value);
+        LOG_ERROR("Invalid space origin: %s", value);
         return 1;
     }
     return 0;
@@ -2668,7 +2919,7 @@ static size_t vs__nrrd_get_type_size(const char* type) {
 static int vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd) {
     size_t bytes_read = fread(nrrd->data, 1, nrrd->data_size, fp);
     if (bytes_read != nrrd->data_size) {
-        printf("Failed to read data: expected %zu bytes, got %zu",
+        LOG_ERROR("Failed to read data: expected %zu bytes, got %zu",
                 nrrd->data_size, bytes_read);
         return 1;
     }
@@ -2676,8 +2927,7 @@ static int vs__nrrd_read_raw_data(FILE* fp, nrrd* nrrd) {
 }
 
 static int vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd) {
-    printf("reading compressed data is not supported yet for nrrd\n");
-    assert("false");
+    LOG_ERROR("reading compressed data is not supported yet for nrrd\n");
     return 1;
     #if 0
     z_stream strm = {0};
@@ -2725,14 +2975,14 @@ static int vs__nrrd_read_gzip_data(FILE* fp, nrrd* nrrd) {
 nrrd* vs_nrrd_read(const char* filename) {
     FILE* fp = fopen(filename, "rb");
     if (!fp) {
-        printf("could not open %s\n",filename);
+        LOG_ERROR("could not open %s\n",filename);
         return NULL;
     }
 
     nrrd* ret = calloc(1, sizeof(nrrd));
     if (!ret) {
 
-        printf("could not allocate ram for nrrd\n");
+        LOG_ERROR("could not allocate ram for nrrd\n");
         fclose(fp);
         return NULL;
     }
@@ -2740,14 +2990,14 @@ nrrd* vs_nrrd_read(const char* filename) {
 
     char line[MAX_LINE_LENGTH];
     if (!fgets(line, sizeof(line), fp)) {
-        printf("Failed to read magic");
+        LOG_ERROR("Failed to read magic");
         ret->is_valid = false;
         goto cleanup;
     }
     vs__trim(line);
 
     if (!vs__str_starts_with(line, "NRRD")) {
-        printf("Not a NRRD file: %s", line);
+        LOG_ERROR("Not a NRRD file: %s", line);
         ret->is_valid = false;
         goto cleanup;
     }
@@ -2782,7 +3032,7 @@ nrrd* vs_nrrd_read(const char* filename) {
         else if (strcmp(key, "dimension") == 0) {
             ret->dimension = atoi(value);
             if (ret->dimension <= 0 || ret->dimension > 16) {
-                printf("Invalid dimension: %d", ret->dimension);
+                LOG_ERROR("Invalid dimension: %d", ret->dimension);
                 ret->is_valid = false;
                 goto cleanup;
             }
@@ -2818,7 +3068,7 @@ nrrd* vs_nrrd_read(const char* filename) {
 
     size_t type_size = vs__nrrd_get_type_size(ret->type);
     if (type_size == 0) {
-        printf("Unsupported type: %s", ret->type);
+        LOG_ERROR("Unsupported type: %s", ret->type);
         ret->is_valid = false;
         goto cleanup;
     }
@@ -2830,7 +3080,7 @@ nrrd* vs_nrrd_read(const char* filename) {
 
     ret->data = malloc(ret->data_size);
     if (!ret->data) {
-        printf("Failed to allocate %zu bytes", ret->data_size);
+        LOG_ERROR("Failed to allocate %zu bytes", ret->data_size);
         ret->is_valid = false;
         goto cleanup;
     }
@@ -2848,7 +3098,7 @@ nrrd* vs_nrrd_read(const char* filename) {
         }
     }
     else {
-        printf("Unsupported encoding: %s", ret->encoding);
+        LOG_ERROR("Unsupported encoding: %s", ret->encoding);
         ret->is_valid = false;
         goto cleanup;
     }
@@ -3833,12 +4083,12 @@ void vs_tiff_print_tags(const TiffImage* img, int directory) {
 
 void vs_tiff_print_all_tags(const TiffImage* img) {
     if (!img) {
-        printf("Error: NULL TIFF image\n");
+        LOG_ERROR("Error: NULL TIFF image\n");
         return;
     }
 
     if (!img->isValid) {
-        printf("Error reading TIFF: %s\n", img->errorMsg);
+        LOG_ERROR("Error reading TIFF: %s\n", img->errorMsg);
         return;
     }
 
@@ -4072,7 +4322,7 @@ TiffImage* vs_tiff_create(uint32_t width, uint32_t height, uint16_t depth,
     return img;
 }
 
-        
+
 // vcps
 
 static int vs__vcps_read_binary_data(FILE* fp, void* out_data, const char* src_type, const char* dst_type, size_t count) {
@@ -4158,13 +4408,13 @@ int vs_vcps_read(const char* filename,
               size_t* width, size_t* height, size_t* dim,
               void* data, const char* dst_type) {
     if (!dst_type || (strcmp(dst_type, "float") != 0 && strcmp(dst_type, "double") != 0)) {
-        fprintf(stderr, "Error: Invalid destination type\n");
+        LOG_ERROR("Error: Invalid destination type\n");
         return 1;
     }
 
     FILE* fp = fopen(filename, "rb");
     if (!fp) {
-        fprintf(stderr, "Error: Cannot open file %s\n", filename);
+        LOG_ERROR("Error: Cannot open file %s\n", filename);
         return 1;
     }
 
@@ -4207,7 +4457,7 @@ int vs_vcps_read(const char* filename,
     if (!header_complete || *width == 0 || *height == 0 || *dim == 0 ||
         (strcmp(src_type, "float") != 0 && strcmp(src_type, "double") != 0) ||
         !ordered) {
-        fprintf(stderr, "Error: Invalid header (w=%zu h=%zu d=%zu t=%s o=%d)\n",
+        LOG_ERROR("Error: Invalid header (w=%zu h=%zu d=%zu t=%s o=%d)\n",
                 *width, *height, *dim, src_type, ordered);
         fclose(fp);
         return 1;
@@ -4226,7 +4476,7 @@ int vs_vcps_write(const char* filename,
     if (!src_type || !dst_type ||
         (strcmp(src_type, "float") != 0 && strcmp(src_type, "double") != 0) ||
         (strcmp(dst_type, "float") != 0 && strcmp(dst_type, "double") != 0)) {
-        fprintf(stderr, "Error: Invalid type specification\n");
+        LOG_ERROR("Error: Invalid type specification\n");
         return 1;
     }
 
@@ -4256,196 +4506,273 @@ int vs_vcps_write(const char* filename,
 
 // vol
 
-volume *vs_vol_new(s32 dims[static 3], bool is_zarr, bool is_tif_stack, bool uses_3d_tif, char* cache_dir, u64 vol_id) {
-  //only 3d tiff chunks are currently supported
-  assert(is_tif_stack && uses_3d_tif);
-
+volume *vs_vol_new(char *cache_dir, char *url) {
   volume *ret = malloc(sizeof(volume));
   if (ret == NULL) {
-    assert(false);
     return NULL;
   }
 
+
   if (cache_dir != NULL) {
     if (vs__mkdir_p(cache_dir)) {
-      printf("Could not mkdir %s\n",cache_dir);
+      LOG_ERROR("Could not mkdir %s",cache_dir);
       return NULL;
     }
   }
 
-  *ret = (volume){{dims[0], dims[1], dims[2]}, is_zarr, is_tif_stack, uses_3d_tif, cache_dir, vol_id};
+  void* zarray_buf = NULL;
+  if (url != NULL) {
+    char zarray_url[1024] = {'\0'};
+    snprintf(zarray_url,1023,"%s/.zarray",url);
+    LOG_INFO("trying to read .zarray from %s",zarray_url);
+    if (vs_download(zarray_url, &zarray_buf) <= 0) {
+      LOG_ERROR("could not download .zarray file!");
+      return NULL;
+    }
+  }
+  zarr_metadata metadata;
+  if (vs_zarr_parse_metadata(zarray_buf,&metadata)) {
+    LOG_ERROR("failed to parse .zarray");
+    return NULL;
+  }
+
+  strncpy(ret->url,url,sizeof(ret->url));
+  strncpy(ret->cache_dir,cache_dir,sizeof(ret->cache_dir));
+  ret->metadata = metadata;
+
+  free(zarray_buf);
   return ret;
 }
 
-chunk* vs_vol_get_chunk(volume* vol, s32 chunk_pos[static 3], s32 chunk_dims[static 3]) {
-  // stitching across chunks, be them tiff or zarr chunks, isn't just yet supported
-  // so for now we'll just force the position to be a multiple of 500
-  // and for dims to be <= 500
-
-  assert(chunk_pos[0] % 500 == 0);
-  assert(chunk_pos[1] % 500 == 0);
-  assert(chunk_pos[2] % 500 == 0);
-  assert(chunk_dims[0] <= 500);
-  assert(chunk_dims[1] <= 500);
-  assert(chunk_dims[2] <= 500);
-
-  int z = chunk_pos[0] / 500;
-  int y = chunk_pos[1] / 500;
-  int x = chunk_pos[2] / 500;
-
-  char filename[1024] = {'\0'};
-  sprintf(filename, "cell_yxz_%03d_%03d_%03d.tif",y,x,z);
-  char filepath[1024] = {'\0'};
-  sprintf(filepath, "%s/%s",vol->cache_dir, filename);
-
-  if (vs__path_exists(filepath)) {
-      chunk* ret = vs_tiff_to_chunk(filepath);
-      return ret;
-  } else {
-#ifdef VESUVIUS_CURL_IMPL
-      char url[1024] = {'\0'};
-      void* buf;
-
-      sprintf(url, "https://dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/volume_grids/20230205180739/%s",filename);
-
-      printf("downloading data from %s\n",url);
-
-      long len = vs_download(url, &buf);
-      if (len < 0) {
-          // download failed
-          return NULL;
-      }
-      printf("len %d\n",(s32)len);
-      //todo: is this applicable for all of our 3d tiff files from the data server?
-      if (len != 250073508 ) {
-          printf("warning! did not download the seemingly correct length from %s\n",url);
-      }
-
-      if (vol->cache_dir != NULL) {
-
-          printf("saving data to %s\n",filepath);
-          FILE* fp = fopen(filepath, "wb");
-          if (fp == NULL) {
-              printf("could not open %s for writing\n",filepath);
-              return NULL;
-          }
-          size_t sz = fwrite(buf, 1, len, fp);
-          printf("wrote: %lld bytes to %s\n",sz, filepath);
-          if (sz != len) {
-              printf("could not write all data to %s\n",filepath);
-          }
-      }
-#endif
-  }
-  return NULL;
+void vs_vol_free(volume* vol) {
+    if (vol) {
+        free(vol);
+    }
 }
 
-        
+chunk *vs_vol_get_chunk(volume *vol, s32 vol_start[static 3], s32 chunk_dims[static 3]) {
+    //TODO: support arbitrary starts and sizes within the volume
+    //for now, we will assume that the volume starts and chunk dimensions are aligned with the zarr block sizes within
+    // volume because it makes the index calculations much easier
+
+    //TODO: make sure that we aren't readng past the end of the chunk if the chunk happens to be the last chunk
+    //in a given dimension
+
+    if (vol_start[0] % vol->metadata.chunks[0] != 0) {
+        LOG_ERROR("vol_start indices must be a multiple of the zrr block size %d", vol->metadata.chunks[0]);
+        return NULL;
+    }
+
+    if (vol_start[1] % vol->metadata.chunks[1] != 0) {
+        LOG_ERROR("vol_start indices must be a multiple of the zrr block size %d", vol->metadata.chunks[1]);
+        return NULL;
+    }
+
+    if (vol_start[2] % vol->metadata.chunks[2] != 0) {
+        LOG_ERROR("vol_start indices must be a multiple of the zrr block size %d", vol->metadata.chunks[2]);
+        return NULL;
+    }
+
+    if (chunk_dims[0] % vol->metadata.chunks[0] != 0) {
+        LOG_ERROR("chunk_dims must be a multiple of the zrr block size %d", vol->metadata.chunks[0]);
+        return NULL;
+    }
+
+    if (chunk_dims[1] % vol->metadata.chunks[1] != 0) {
+        LOG_ERROR("chunk_dims must be a multiple of the zrr block size %d", vol->metadata.chunks[1]);
+        return NULL;
+    }
+
+    if (chunk_dims[2] % vol->metadata.chunks[2] != 0) {
+        LOG_ERROR("chunk_dims must be a multiple of the zrr block size %d", vol->metadata.chunks[2]);
+        return NULL;
+    }
+
+    chunk *ret = vs_chunk_new(chunk_dims);
+
+    int zstart = vol_start[0] / vol->metadata.chunks[0];
+    int ystart = vol_start[1] / vol->metadata.chunks[1];
+    int xstart = vol_start[2] / vol->metadata.chunks[2];
+    int zend = (vol_start[0] + chunk_dims[0]-1) / vol->metadata.chunks[0];
+    int yend = (vol_start[1] + chunk_dims[1]-1) / vol->metadata.chunks[1];
+    int xend = (vol_start[2] + chunk_dims[2]-1) / vol->metadata.chunks[2];
+
+
+    for (int z = zstart; z <= zend; z++) {
+        for (int y = ystart; y <= yend; y++) {
+            for (int x = xstart; x <= xend; x++) {
+                char blockpath[1024] = {'\0'};
+                chunk *c = NULL;
+                snprintf(blockpath, 1023, "%s/%d/%d/%d", vol->cache_dir, z, y, x);
+                LOG_INFO("checking for zarr block at %s", blockpath);
+                if (vs__path_exists(blockpath)) {
+                    LOG_INFO("reading %s from disk", blockpath);
+                    c = vs_zarr_read_chunk(blockpath, vol->metadata);
+                    if (c == NULL) {
+                        LOG_ERROR("failed to read zarr chunk from %s", blockpath);
+                        vs_chunk_free(ret);
+                        return NULL;
+                    }
+                } else {
+                    char url[1024] = {'\0'};
+                    snprintf(url, 1023, "%s/%d/%d/%d", vol->url, z, y, x);
+                    LOG_INFO("downloading block from %s", url);
+                    c = vs_zarr_fetch_block(url, vol->metadata);
+                    if (c == NULL) {
+                        //NOTE: this is not necessarily an error. Some logical blocks do not exist physically because
+                        //they are all zero, and zarr will by default not keep all zero chunk files. so for now we'll assume
+                        //that is the case and just skip it
+                        LOG_ERROR("could not download block from %s", url);
+                        continue;
+                    }
+                    LOG_INFO("downloaded block from %s", url);
+                    LOG_INFO("writing chunk to %s", blockpath);
+                    if (vs_zarr_write_chunk(blockpath, vol->metadata, c)) {
+                        LOG_ERROR("failed to write zarr chunk to %s", blockpath);
+                        vs_chunk_free(c);
+                        vs_chunk_free(ret);
+                        return NULL;
+                    }
+                }
+
+                s32 src_start[3] = {
+                    MAX(0, vol_start[0] - z * vol->metadata.chunks[0]),
+                    MAX(0, vol_start[1] - y * vol->metadata.chunks[1]),
+                    MAX(0, vol_start[2] - x * vol->metadata.chunks[2])
+                  };
+
+                s32 dest_start[3] = {
+                    z * vol->metadata.chunks[0] - vol_start[0],
+                    y * vol->metadata.chunks[1] - vol_start[1],
+                    x * vol->metadata.chunks[2] - vol_start[2]
+                  };
+
+                s32 copy_dims[3] = {
+                    MIN(vol->metadata.chunks[0] - src_start[0], chunk_dims[0] - dest_start[0]),
+                    MIN(vol->metadata.chunks[1] - src_start[1], chunk_dims[1] - dest_start[1]),
+                    MIN(vol->metadata.chunks[2] - src_start[2], chunk_dims[2] - dest_start[2])
+                  };
+
+                if (vs_chunk_graft(ret, c, src_start, dest_start, copy_dims)) {
+                    vs_chunk_free(c);
+                    vs_chunk_free(ret);
+                    LOG_ERROR("failed to graft chunk");
+                    return NULL;
+                }
+                vs_chunk_free(c);
+            }
+        }
+    }
+    return ret;
+}
+
+
 // zarr
 
-#ifdef VESUVIUS_ZARR_IMPL
 
-static struct json_value_s *vs__json_find_value(const struct json_object_s *obj, const char *key) {
-  struct json_object_element_s *element = obj->start;
-  while (element) {
-    if (element->name->string_size == strlen(key) &&
-        strncmp(element->name->string, key, element->name->string_size) == 0) {
-      return element->value;
+
+
+chunk* vs_zarr_fetch_block(char* url, zarr_metadata metadata) {
+
+  void* compressed_buf = NULL;
+  long compressed_size;
+  if ((compressed_size = vs_download(url, &compressed_buf)) <= 0) {
+      free(compressed_buf);
+    return NULL;
+  }
+  chunk* mychunk = vs_zarr_decompress_chunk(compressed_size, compressed_buf,metadata);
+  free(compressed_buf);
+  return mychunk;
+}
+
+static void vs__json_parse_int32_array(json_object *array_obj, int32_t output[3]) {
+    size_t array_len = json_object_array_length(array_obj);
+    for (size_t i = 0; i < 3 && i < array_len; i++) {
+        json_object *element = json_object_array_get_idx(array_obj, i);
+        output[i] = (int32_t)json_object_get_int(element);
     }
-    element = element->next;
-  }
-  return NULL;
 }
 
-static void vs__json_parse_int32_array(struct json_array_s *array, int32_t output[3]) {
-  struct json_array_element_s *element = array->start;
-  for (int i = 0; i < 3 && element; i++) {
-    struct json_number_s *num = element->value->payload;
-    output[i] = (int32_t) strtol(num->number, NULL, 10);
-    element = element->next;
-  }
-}
+int vs_zarr_parse_metadata(const char *json_string, zarr_metadata *metadata) {
+    json_object *root = json_tokener_parse(json_string);
+    if (!root) {
+        printf("Failed to parse JSON!\n");
+        return 1;
+    }
 
-static int vs__zarr_parse_metadata(const char *json_string, zarr_metadata *metadata) {
-  struct json_value_s *root = json_parse(json_string, strlen(json_string));
-  if (!root) {
-    printf("Failed to parse JSON!\n");
+    json_object *shapes_value;
+    if (json_object_object_get_ex(root, "shape", &shapes_value) &&
+        json_object_is_type(shapes_value, json_type_array)) {
+        vs__json_parse_int32_array(shapes_value, metadata->shape);
+    }
+
+    json_object *chunks_value;
+    if (json_object_object_get_ex(root, "chunks", &chunks_value) &&
+        json_object_is_type(chunks_value, json_type_array)) {
+        vs__json_parse_int32_array(chunks_value, metadata->chunks);
+    }
+
+    json_object *compressor_value;
+    if (json_object_object_get_ex(root, "compressor", &compressor_value) &&
+        json_object_is_type(compressor_value, json_type_object)) {
+
+        json_object *blocksize;
+        if (json_object_object_get_ex(compressor_value, "blocksize", &blocksize)) {
+            metadata->compressor.blocksize = json_object_get_int(blocksize);
+        }
+
+        json_object *clevel;
+        if (json_object_object_get_ex(compressor_value, "clevel", &clevel)) {
+            metadata->compressor.clevel = json_object_get_int(clevel);
+        }
+
+        json_object *cname;
+        if (json_object_object_get_ex(compressor_value, "cname", &cname)) {
+            const char *cname_str = json_object_get_string(cname);
+            strncpy(metadata->compressor.cname, cname_str, sizeof(metadata->compressor.cname) - 1);
+            metadata->compressor.cname[sizeof(metadata->compressor.cname) - 1] = '\0';
+        }
+
+        json_object *id;
+        if (json_object_object_get_ex(compressor_value, "id", &id)) {
+            const char *id_str = json_object_get_string(id);
+            strncpy(metadata->compressor.id, id_str, sizeof(metadata->compressor.id) - 1);
+            metadata->compressor.id[sizeof(metadata->compressor.id) - 1] = '\0';
+        }
+
+        json_object *shuffle;
+        if (json_object_object_get_ex(compressor_value, "shuffle", &shuffle)) {
+            metadata->compressor.shuffle = json_object_get_int(shuffle);
+        }
+    }
+
+    json_object *dtype_value;
+    if (json_object_object_get_ex(root, "dtype", &dtype_value)) {
+        const char *dtype_str = json_object_get_string(dtype_value);
+        strncpy(metadata->dtype, dtype_str, sizeof(metadata->dtype) - 1);
+        metadata->dtype[sizeof(metadata->dtype) - 1] = '\0';
+    }
+
+    json_object *fill_value;
+    if (json_object_object_get_ex(root, "fill_value", &fill_value)) {
+        metadata->fill_value = json_object_get_int(fill_value);
+    }
+
+    json_object *order_value;
+    if (json_object_object_get_ex(root, "order", &order_value)) {
+        const char *order_str = json_object_get_string(order_value);
+        if (order_str && order_str[0]) {
+            metadata->order = order_str[0];
+        }
+    }
+
+    json_object *format_value;
+    if (json_object_object_get_ex(root, "zarr_format", &format_value)) {
+        metadata->zarr_format = json_object_get_int(format_value);
+    }
+
+    json_object_put(root);
     return 0;
-  }
-
-  struct json_object_s *object = root->payload;
-
-  struct json_value_s *shapes_value = vs__json_find_value(object, "shape");
-  if (shapes_value && shapes_value->type == json_type_array) {
-    vs__json_parse_int32_array(shapes_value->payload, metadata->shape);
-  }
-
-  struct json_value_s *chunks_value = vs__json_find_value(object, "chunks");
-  if (chunks_value && chunks_value->type == json_type_array) {
-    vs__json_parse_int32_array(chunks_value->payload, metadata->chunks);
-  }
-
-  struct json_value_s *compressor_value = vs__json_find_value(object, "compressor");
-  if (compressor_value && compressor_value->type == json_type_object) {
-    struct json_object_s *compressor = compressor_value->payload;
-
-    struct json_value_s *blocksize = vs__json_find_value(compressor, "blocksize");
-    if (blocksize && blocksize->type == json_type_number) {
-      struct json_number_s *num = blocksize->payload;
-      metadata->compressor.blocksize = (int32_t) strtol(num->number, NULL, 10);
-    }
-
-    struct json_value_s *clevel = vs__json_find_value(compressor, "clevel");
-    if (clevel && clevel->type == json_type_number) {
-      struct json_number_s *num = clevel->payload;
-      metadata->compressor.clevel = (int32_t) strtol(num->number, NULL, 10);
-    }
-
-    struct json_value_s *cname = vs__json_find_value(compressor, "cname");
-    if (cname && cname->type == json_type_string) {
-      struct json_string_s *str = cname->payload;
-      strncpy(metadata->compressor.cname, str->string, sizeof(metadata->compressor.cname) - 1);
-    }
-
-    struct json_value_s *id = vs__json_find_value(compressor, "id");
-    if (id && id->type == json_type_string) {
-      struct json_string_s *str = id->payload;
-      strncpy(metadata->compressor.id, str->string, sizeof(metadata->compressor.id) - 1);
-    }
-
-    struct json_value_s *shuffle = vs__json_find_value(compressor, "shuffle");
-    if (shuffle && shuffle->type == json_type_number) {
-      struct json_number_s *num = shuffle->payload;
-      metadata->compressor.shuffle = (int32_t) strtol(num->number, NULL, 10);
-    }
-  }
-
-  struct json_value_s *dtype_value = vs__json_find_value(object, "dtype");
-  if (dtype_value && dtype_value->type == json_type_string) {
-    struct json_string_s *str = dtype_value->payload;
-    strncpy(metadata->dtype, str->string, sizeof(metadata->dtype) - 1);
-  }
-
-  struct json_value_s *fill_value = vs__json_find_value(object, "fill_value");
-  if (fill_value && fill_value->type == json_type_number) {
-    struct json_number_s *num = fill_value->payload;
-    metadata->fill_value = (int32_t) strtol(num->number, NULL, 10);
-  }
-
-  struct json_value_s *order_value = vs__json_find_value(object, "order");
-  if (order_value && order_value->type == json_type_string) {
-    struct json_string_s *str = order_value->payload;
-    metadata->order = str->string[0];
-  }
-
-  struct json_value_s *format_value = vs__json_find_value(object, "zarr_format");
-  if (format_value && format_value->type == json_type_number) {
-    struct json_number_s *num = format_value->payload;
-    metadata->zarr_format = (int32_t) strtol(num->number, NULL, 10);
-  }
-
-  free(root);
-  return 1;
 }
 
 zarr_metadata vs_zarr_parse_zarray(char *path) {
@@ -4453,7 +4780,7 @@ zarr_metadata vs_zarr_parse_zarray(char *path) {
 
   FILE *fp = fopen(path, "rt");
   if (fp == NULL) {
-    printf("could not open file %s\n", path);
+    LOG_ERROR("could not open file %s\n", path);
     assert(false);
     return metadata;
   }
@@ -4465,7 +4792,7 @@ zarr_metadata vs_zarr_parse_zarray(char *path) {
   fread(buf, 1, size, fp);
 
 
-  if (vs__zarr_parse_metadata(buf, &metadata)) {
+  if (vs_zarr_parse_metadata(buf, &metadata)) {
     printf("Shape: [%d, %d, %d]\n",
            metadata.shape[0], metadata.shape[1], metadata.shape[2]);
     printf("Chunks: [%d, %d, %d]\n",
@@ -4485,18 +4812,149 @@ zarr_metadata vs_zarr_parse_zarray(char *path) {
   free(buf);
   return metadata;
 }
-#endif
+
+chunk* vs_zarr_read_chunk(char* path, zarr_metadata metadata) {
+
+    FILE* fp = fopen(path, "rb");
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    u8* compressed_data = malloc(size);
+    fread(compressed_data,1,size,fp);
+
+    chunk* ret= vs_zarr_decompress_chunk(size, compressed_data, metadata);
+    free(compressed_data);
+    return ret;
+}
+
+chunk* vs_zarr_decompress_chunk(long size, void* compressed_data, zarr_metadata metadata) {
+
+    int z = metadata.chunks[0];
+    int y = metadata.chunks[1];
+    int x = metadata.chunks[2];
+    int dtype_size = 0;
+    if(strcmp(metadata.dtype,"|u1") == 0) {
+        dtype_size = 1;
+    } else if (strcmp(metadata.dtype, "|u2") == 0) {
+        ASSERT(false,"16 bit zarr not currently supported");
+        dtype_size = 2;
+    } else {
+        LOG_ERROR("unsupported zarr format. Only unsigned 8 and unsigned 16 are supported\n");
+    }
+
+    unsigned char* decompressed_data;
+    int decompressed_size;
+    // the data may not actually be compressed. if so, just use the compressed data
+    if(strnlen(metadata.compressor.cname,32) == 0) {
+        decompressed_data = compressed_data;
+        decompressed_size = size;
+    } else {
+        decompressed_data = malloc(z * y * x * dtype_size);
+        decompressed_size = blosc2_decompress(compressed_data, size, decompressed_data, z * y * x * dtype_size);
+        if (decompressed_size < 0) {
+            LOG_ERROR("Blosc2 decompression failed: %d\n", decompressed_size);
+            free(decompressed_data);
+            return NULL;
+        }
+    }
+    chunk *ret = vs_chunk_new((s32[3]){z, y, x});
+
+    for (int z = 0; z < ret->dims[0]; z++) {
+        for (int y = 0; y < ret->dims[1]; y++) {
+            for (int x = 0; x < ret->dims[2]; x++) {
+                vs_chunk_set(ret, z, y, x, (f32) decompressed_data[z * ret->dims[1] * ret->dims[2] + y * ret->dims[2] + x]);
+            }
+        }
+    }
+    if(decompressed_data != compressed_data) {
+        free(decompressed_data);
+    }
+
+    return ret;
+}
+
+
+int vs_zarr_write_chunk(char *path, zarr_metadata metadata, chunk* c) {
+    // the directory to the file path might not exist so we will mkdir for it here
+    // path should be a path to the chunk file name, e.g. 54keV_7.91um_Scroll1A.zarr/0/50/30/30 will write out
+    // a file called 30 in directory 30 in 50 in 0 in 54keV...
+
+    char* dirname = vs__basename(path);
+    if (vs__mkdir_p(dirname)) {
+        LOG_ERROR("failed to mkdirs to %s",dirname);
+        return 1;
+    }
+    void* compressed_buf;
+    int len = vs_zarr_compress_chunk(c,metadata,&compressed_buf);
+    if (len <= 0) {
+        //TODO: len == 0 is probably an error, right?
+        return 1;
+    }
+    FILE* fp = fopen(path, "wb");
+    fwrite(compressed_buf,1,len,fp);
+    LOG_INFO("wrote chunk to %s",path);
+    fclose(fp);
+    free(dirname);
+    free(compressed_buf);
+    return 0;
+}
+
+int vs_zarr_compress_chunk(chunk* c, zarr_metadata metadata, void** compressed_data) {
+    if (c->dims[0] != metadata.chunks[0]) {
+        LOG_ERROR("zarr block size mismatch with chunk dims");
+        return 1;
+    }
+    if (c->dims[1] != metadata.chunks[1]) {
+        LOG_ERROR("zarr block size mismatch with chunk dims");
+        return 1;
+    }
+    if (c->dims[2] != metadata.chunks[2]) {
+        LOG_ERROR("zarr block size mismatch with chunk dims");
+        return 1;
+    }
+  int z = metadata.chunks[0];
+  int y = metadata.chunks[1];
+  int x = metadata.chunks[2];
+  int dtype_size = 0;
+  u8* decompressed_data = NULL;
+  if (strcmp(metadata.dtype, "|u1") == 0) {
+    dtype_size = 1;
+    decompressed_data = malloc(z*y*x);
+    for (int _z = 0; _z < z; _z++) {
+      for (int _y = 0; _y < y; _y++) {
+        for (int _x = 0; _x < x; _x++) {
+          decompressed_data[_z*y*x+_y*x+_x] = (u8) vs_chunk_get(c,_z,_y,_x);
+        }
+      }
+    }
+  } else if (strcmp(metadata.dtype, "|u2") == 0) {
+      LOG_ERROR("16 bit zarr not currently supported\n");
+      return 1;
+  } else {
+    LOG_ERROR("unsupported zarr format. Only unsigned 8 is supported\n");
+  }
+  *compressed_data = malloc(z*y*x+BLOSC2_MAX_OVERHEAD);
+  int compressed_len = blosc2_compress(metadata.compressor.clevel,metadata.compressor.shuffle,dtype_size,decompressed_data,z*y*x,*compressed_data,z*y*x*BLOSC2_MAX_OVERHEAD);
+
+  if (compressed_len <= 0) {
+    LOG_ERROR("Blosc2 compression failed: %d\n", compressed_len);
+    free(compressed_data);
+    free(decompressed_data);
+    return -1;
+  }
+  return compressed_len;
+}
+
 
 //vesuvius specific
 chunk *vs_tiff_to_chunk(const char *tiffpath) {
   TiffImage *img = vs_tiff_read(tiffpath);
   if (!img || !img->isValid) {
-    assert(false);
+      LOG_ERROR("tiff is NULL or invalid");
     return NULL;
   }
   if (img->depth <= 1) {
     printf("can't load a 2d tiff as a chunk");
-    assert(false);
     return NULL;
   }
 
@@ -4524,12 +4982,12 @@ chunk *vs_tiff_to_chunk(const char *tiffpath) {
 slice *vs_tiff_to_slice(const char *tiffpath, int index) {
   TiffImage *img = vs_tiff_read(tiffpath);
   if (!img || !img->isValid) {
-    assert(false);
-    return NULL;
+      LOG_ERROR("tiff is null or invalid");
+      return NULL;
   }
   if (index < 0 || index >= img->depth) {
-    assert(false);
-    return NULL;
+      LOG_ERROR("index %d is invalid for a tiff with depth %d",index,img->depth);
+      return NULL;
   }
 
   s32 dims[2] = {img->directories[0].height, img->directories[0].width};
@@ -4547,54 +5005,6 @@ slice *vs_tiff_to_slice(const char *tiffpath, int index) {
   }
   return ret;
 }
-
-
-
-int vs_slice_fill(slice *slice, volume *vol, int start[static 2], int axis) {
-  assert(axis == 'z' || axis == 'y' || axis == 'x');
-  if (start[0] + slice->dims[0] < 0 || start[0] + slice->dims[0] > vol->dims[0]) {
-    assert(false);
-    return 1;
-  }
-  if (start[1] + slice->dims[1] < 0 || start[1] + slice->dims[1] > vol->dims[1]) {
-    assert(false);
-    return 1;
-  }
-
-  for (int y = 0; y < vol->dims[0]; y++) {
-    for (int x = 0; x < vol->dims[1]; x++) {
-      //TODO: actually get the data
-      slice->data[y * slice->dims[1] + x] = 0.0f;
-    }
-  }
-  return 0;
-}
-
-int vs_chunk_fill(chunk *chunk, volume *vol, int start[static 3]) {
-  if (start[0] + chunk->dims[0] < 0 || start[0] + chunk->dims[0] > vol->dims[0]) {
-    assert(false);
-    return 1;
-  }
-  if (start[1] + chunk->dims[1] < 0 || start[1] + chunk->dims[1] > vol->dims[1]) {
-    assert(false);
-    return 1;
-  }
-  if (start[2] + chunk->dims[2] < 0 || start[2] + chunk->dims[2] > vol->dims[2]) {
-    assert(false);
-    return 1;
-  }
-
-  for (int z = 0; z < vol->dims[0]; z++) {
-    for (int y = 0; y < vol->dims[1]; y++) {
-      for (int x = 0; x < vol->dims[2]; x++) {
-        //TODO: actually get the data
-        chunk->data[z * chunk->dims[1] * chunk->dims[2] + y * chunk->dims[2] + x] = 0.0f;
-      }
-    }
-  }
-  return 0;
-}
-
 
 
 #endif // defined(VESUVIUS_IMPL)
